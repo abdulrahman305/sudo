@@ -22,10 +22,11 @@
 .\" Materiel Command, USAF, under agreement number F39502-99-1-0512.
 .\"
 .nr SL @SEMAN@
+.nr AA @AAMAN@
 .nr BA @BAMAN@
 .nr LC @LCMAN@
 .nr PS @PSMAN@
-.TH "SUDOERS" "@mansectform@" "February 14, 2025" "Sudo @PACKAGE_VERSION@" "File Formats Manual"
+.TH "SUDOERS" "@mansectform@" "June 7, 2025" "Sudo @PACKAGE_VERSION@" "File Formats Manual"
 .nh
 .if n .ad l
 .SH "NAME"
@@ -672,16 +673,16 @@ Resource limits may also be set in the
 \fIsudoers\fR
 file itself, in which case they override those set by the system.
 See the
-\fIrlimit_as,\fR
-\fIrlimit_core,\fR
-\fIrlimit_cpu,\fR
-\fIrlimit_data,\fR
-\fIrlimit_fsize,\fR
-\fIrlimit_locks,\fR
-\fIrlimit_memlock,\fR
-\fIrlimit_nofile,\fR
-\fIrlimit_nproc,\fR
-\fIrlimit_rss,\fR
+\fIrlimit_as\fR,
+\fIrlimit_core\fR,
+\fIrlimit_cpu\fR,
+\fIrlimit_data\fR,
+\fIrlimit_fsize\fR,
+\fIrlimit_locks\fR,
+\fIrlimit_memlock\fR,
+\fIrlimit_nofile\fR,
+\fIrlimit_nproc\fR,
+\fIrlimit_rss\fR,
 \fIrlimit_stack\fR
 options described below.
 Resource limits in
@@ -805,7 +806,7 @@ Cmnd_Alias ::= NAME
 
 Cmnd_Alias_Spec ::= Cmnd_Alias '=' Cmnd_List
 
-NAME ::= [A-Z]([A-Z][0-9]_)*
+NAME ::= [A\(enZ]([A\(enZ][0\(en9]_)*
 .RE
 .fi
 .PP
@@ -933,7 +934,7 @@ Group in the same domain: "%:Group Name"
 Group in any domain: "%:Group Name@FULLY.QUALIFIED.DOMAIN"
 .TP 3n
 \fB\(bu\fR
-Group SID: "%:S-1-2-34-5678901234-5678901234-5678901234-567"
+Group SID: "%:S\-1\-2\-34\-5678901234\-5678901234\-5678901234\-567"
 .PP
 See
 \fIGROUP PROVIDER PLUGINS\fR
@@ -1038,8 +1039,8 @@ only the case for non-networked systems.
 .nf
 .sp
 .RS 0n
-digest ::= [A-Fa-f0-9]+ |
-           [A-Za-z0-9\e+/=]+
+digest ::= [A\(enFa\(enf0\(en9]+ |
+           [A\(enZa\(enz0\(en9\e+/=]+
 
 Digest_Spec ::= "sha224" ':' digest |
                 "sha256" ':' digest |
@@ -1225,7 +1226,7 @@ For example, using openssl:
 .nf
 .sp
 .RS 0n
-$ openssl dgst -sha224 /bin/ls
+$ openssl dgst \-sha224 /bin/ls
 SHA224(/bin/ls)= 118187da8364d490b4a7debbf483004e8f3e053ec954309de2c41a25
 .RE
 .fi
@@ -1234,7 +1235,7 @@ It is also possible to use openssl to generate base64 output:
 .nf
 .sp
 .RS 0n
-$ openssl dgst -binary -sha224 /bin/ls | openssl base64
+$ openssl dgst \-binary \-sha224 /bin/ls | openssl base64
 EYGH2oNk1JC0p9679IMATo8+BT7JVDCd4sQaJQ==
 .RE
 .fi
@@ -1387,20 +1388,28 @@ Cmnd_Spec ::= Runas_Spec? Option_Spec* (Tag_Spec ':')* Cmnd
 Runas_Spec ::= '(' Runas_List? (':' Runas_List)? ')'
 
 .ie \n(SL \{\
-.ie \n(PS Option_Spec ::= (SELinux_Spec | Solaris_Priv_Spec | Date_Spec | Timeout_Spec)
-.el Option_Spec ::= (SELinux_Spec | Date_Spec | Timeout_Spec)
+.ie \n(PS Option_Spec ::= (SELinux_Spec | Solaris_Priv_Spec | Date_Spec | Timeout_Spec | Chdir_Spec | Chroot_Spec)
+.el Option_Spec ::= (SELinux_Spec | Date_Spec | Timeout_Spec | Chdir_Spec | Chroot_Spec)
 .\}
 .el \{\
-.ie \n(PS Option_Spec ::= (Solaris_Priv_Spec | Date_Spec | Timeout_Spec)
-.el Option_Spec ::= (Date_Spec | Timeout_Spec)
+.ie \n(AA \{\
+.ie \n(PS Option_Spec ::= (AppArmor_Spec | Solaris_Priv_Spec | Date_Spec | Timeout_Spec | Chdir_Spec | Chroot_Spec)
+.el Option_Spec ::= (AppArmor_Spec | Date_Spec | Timeout_Spec | Chdir_Spec | Chroot_Spec)
+.\}
+.el \{\
+.ie \n(PS Option_Spec ::= (Solaris_Priv_Spec | Date_Spec | Timeout_Spec | Chdir_Spec | Chroot_Spec)
+.el Option_Spec ::= (Date_Spec | Timeout_Spec | Chdir_Spec | Chroot_Spec)
+.\}
 .\}
 
 .if \n(SL \{\
 SELinux_Spec ::= ('ROLE=role' | 'TYPE=type')
 
 .\}
+.if \n(AA \{\
 AppArmor_Spec ::= 'APPARMOR_PROFILE=profile'
 
+.\}
 .if \n(PS \{\
 Solaris_Priv_Spec ::= ('PRIVS=privset' | 'LIMITPRIVS=privset')
 
@@ -1509,7 +1518,7 @@ For example:
 .nf
 .sp
 .RS 0n
-$ sudo -u operator /bin/ls
+$ sudo \-u operator /bin/ls
 .RE
 .fi
 .PP
@@ -1564,9 +1573,9 @@ The following would all be permitted by the sudoers entry above:
 .nf
 .sp
 .RS 0n
-$ sudo -u operator /bin/ls
-$ sudo -u operator -g operator /bin/ls
-$ sudo -g operator /bin/ls
+$ sudo \-u operator /bin/ls
+$ sudo \-u operator \-g operator /bin/ls
+$ sudo \-g operator /bin/ls
 .RE
 .fi
 .PP
@@ -1588,7 +1597,7 @@ For example:
 .nf
 .sp
 .RS 0n
-$ sudo -g dialer /usr/bin/cu
+$ sudo \-g dialer /usr/bin/cu
 .RE
 .fi
 .PP
@@ -1622,7 +1631,9 @@ Options may consist of
 .if \n(SL \{\
 SELinux roles and/or types,
 .\}
+.if \n(AA \{\
 AppArmor profiles,
+.\}
 .if \n(PS \{\
 Solaris privileges sets,
 .\}
@@ -1653,6 +1664,7 @@ A role or type specified on the command line,
 however, will supersede the values in
 \fIsudoers\fR.
 .\}
+.if \n(AA \{\
 .SS "AppArmor_Spec"
 On systems supporting AppArmor,
 \fIsudoers\fR
@@ -1711,6 +1723,7 @@ and user
 to run
 \fI/bin/ls\fR
 without any confinement at all.
+.\}
 .if \n(PS \{\
 .SS "Solaris_Priv_Spec"
 On Solaris systems,
@@ -1729,7 +1742,7 @@ For example:
 .nf
 .sp
 .RS 0n
-$ ppriv -l
+$ ppriv \-l
 .RE
 .fi
 .PP
@@ -1776,7 +1789,7 @@ It is also possible to specify a timezone offset from UTC in hours
 and minutes instead of a
 \(oqZ\(cq.
 For example,
-\(oq-0500\(cq
+\(oq\-0500\(cq
 would correspond to Eastern Standard time in the US.
 As an extension, if no
 \(oqZ\(cq
@@ -1855,6 +1868,10 @@ user's home directory.
 .PP
 This setting is only supported by version 1.9.3 or higher.
 .SS "Chroot_Spec"
+Support for setting the root directory is deprecated and will be removed
+in a future version of
+\fBsudo\fR.
+.PP
 The root directory that the command will be run in can be specified
 using the
 \fRCHROOT\fR
@@ -2083,10 +2100,10 @@ By default, if the
 \fRNOPASSWD\fR
 tag is applied to any of a user's entries for the current host,
 the user will be able to run
-\(oqsudo -l\(cq
+\(oqsudo \-l\(cq
 without a password.
 Additionally, a user may only run
-\(oqsudo -v\(cq
+\(oqsudo \-v\(cq
 without a password if all of the user's entries for the current
 host have the
 \fRNOPASSWD\fR
@@ -2338,7 +2355,7 @@ This kind of rule is impossible to express safely using wildcards.
 .nf
 .sp
 .RS 4n
-john	ALL = /usr/bin/passwd ^[a-zA-Z0-9_]+$,\e
+john	ALL = /usr/bin/passwd ^[a\-zA\-Z0\-9_]+$,\e
               !/usr/bin/passwd root
 .RE
 .fi
@@ -4255,7 +4272,7 @@ will set the umask to be the union of the user's umask and what is specified in
 This flag is
 \fI@umask_override@\fR
 by default.
-.if \n(BA \{\
+.if \n(LC \{\
 .TP 18n
 use_loginclass
 If set,
@@ -4265,7 +4282,7 @@ if one exists.
 Only available if
 \fBsudo\fR
 is configured with the
-\fR--with-logincap\fR
+\fR\-\-with-logincap\fR
 option.
 This flag is
 \fIoff\fR
@@ -4373,7 +4390,7 @@ closefrom
 Before it executes a command,
 \fBsudo\fR
 will close all open file descriptors other than standard input,
-standard output, and standard error (file descriptors 0-2).
+standard output, and standard error (file descriptors 0\(en2).
 The
 \fIclosefrom\fR
 option can be used to specify a different file descriptor at which
@@ -4484,9 +4501,9 @@ Set this to 0 to always prompt for a password.
 If set to a value less than 0 the user's time stamp will not expire
 until the system is rebooted.
 This can be used to allow users to create or delete their own time stamps via
-\(oqsudo -v\(cq
+\(oqsudo \-v\(cq
 and
-\(oqsudo -k\(cq
+\(oqsudo \-k\(cq
 respectively.
 .TP 18n
 umask
@@ -4519,6 +4536,7 @@ The umask setting in PAM is not used for
 which does not create a new PAM session.
 .PP
 \fBStrings\fR:
+.if \n(AA \{\
 .TP 18n
 apparmor_profile
 The default AppArmor profile to transition into when executing the
@@ -4532,6 +4550,7 @@ entries by specifying the
 option.
 This option is only available when sudo is built with AppArmor
 support.
+.\}
 .TP 18n
 cmddenial_message
 .br
@@ -5169,7 +5188,7 @@ groups runs
 Only available if
 \fBsudo\fR
 is configured with the
-\fR--enable-admin-flag\fR
+\fR\-\-enable-admin-flag\fR
 option.
 The default value is
 \fI~/.sudo_as_admin_successful\fR.
@@ -5632,6 +5651,10 @@ that includes a
 \fIChroot_Spec\fR.
 .sp
 This setting is only supported by version 1.9.3 or higher.
+.sp
+Support for setting the root directory is deprecated and will be removed
+in a future version of
+\fBsudo\fR.
 .TP 14n
 runcwd
 If set,
@@ -5866,7 +5889,7 @@ single value without double-quotes.
 The list can be replaced, added to, deleted from, or disabled by using the
 \(oq=\(cq,
 \(oq+=\(cq,
-\(oq-=\(cq,
+\(oq\-=\(cq,
 and
 \(oq\&!\(cq
 operators respectively.
@@ -5893,7 +5916,7 @@ single value without double-quotes.
 The list can be replaced, added to, deleted from, or disabled by using the
 \(oq=\(cq,
 \(oq+=\(cq,
-\(oq-=\(cq,
+\(oq\-=\(cq,
 and
 \(oq\&!\(cq
 operators respectively.
@@ -6542,7 +6565,7 @@ statement is never executed.
 .nf
 .sp
 .RS 4n
-$ sh -s < test.sh
+$ sh \-s < test.sh
 testing
 .RE
 .fi
@@ -6615,7 +6638,7 @@ flag or the
 command tag will enable
 \fIlog_stdout\fR
 and
-\fIlog_stderr.\fR
+\fIlog_stderr\fR.
 Careful ordering of rules may be necessary to achieve the results
 that you expect.
 .SS "I/O log format"
@@ -6774,7 +6797,7 @@ No post-processing is performed.
 For manual viewing, you may wish to convert carriage return characters
 in the log to line feeds.
 For example:
-\(oqgunzip -c ttyin | tr \&"\er\&" \&"\en\&"\(cq
+\(oqgunzip \-c ttyin | tr \&"\er\&" \&"\en\&"\(cq
 .TP 10n
 \fIstdin\fR
 The standard input when no terminal is present, or input redirected from
@@ -6952,12 +6975,7 @@ facility in all cases and for commands to be run with
 the target user's home directory as the working directory.
 We don't want to subject the full time staff to the
 \fBsudo\fR
-lecture and we want to allow them to run commands in a
-chroot(2)
-\(lqsandbox\(rq
-via the
-\fB\-R\fR
-option.
+lecture.
 User
 \fBmillert\fR
 need not provide a password and we don't want to reset the
@@ -6988,7 +7006,7 @@ privileges.
 # Override built-in defaults
 Defaults		syslog=auth,runcwd=~
 Defaults>root		!set_logname
-Defaults:FULLTIMERS	!lecture,runchroot=*
+Defaults:FULLTIMERS	!lecture
 Defaults:millert	!authenticate
 Defaults@SERVERS	log_year, logfile=@log_dir@/sudo.log
 Defaults!PAGERS		noexec
@@ -7108,7 +7126,7 @@ to operator.
 .nf
 .sp
 .RS 0n
-pete		HPPA = /usr/bin/passwd [A-Za-z]*, !/usr/bin/passwd *root*
+pete		HPPA = /usr/bin/passwd [A\-Za\-z]*, !/usr/bin/passwd *root*
 
 %opers		ALL = (: ADMINGRP) /usr/sbin/
 .RE
@@ -7153,7 +7171,7 @@ As a result, this rule will also allow:
 .nf
 .sp
 .RS 4n
-passwd username --expire
+passwd username \-\-expire
 .RE
 .fi
 .PP
@@ -7225,7 +7243,7 @@ without giving a password.
 .nf
 .sp
 .RS 0n
-john		ALPHA = /usr/bin/su [!-]*, !/usr/bin/su *root*
+john		ALPHA = /usr/bin/su [!\-]*, !/usr/bin/su *root*
 .RE
 .fi
 .PP
@@ -7318,7 +7336,7 @@ to www.
 .sp
 .RS 0n
 ALL		CDROM = NOPASSWD: /sbin/umount /CDROM,\e
-		/sbin/mount -o nosuid\e,nodev /dev/cd0a /CDROM
+		/sbin/mount \-o nosuid\e,nodev /dev/cd0a /CDROM
 .RE
 .fi
 .PP
@@ -7382,8 +7400,8 @@ file entry:
 .nf
 .sp
 .RS 0n
-john	ALL = /usr/bin/passwd [a-zA-Z0-9]*, /usr/bin/chsh [a-zA-Z0-9]*,\e
-              /usr/bin/chfn [a-zA-Z0-9]*, !/usr/bin/* root
+john	ALL = /usr/bin/passwd [a\-zA\-Z0\-9]*, /usr/bin/chsh [a\-zA\-Z0\-9]*,\e
+              /usr/bin/chfn [a\-zA\-Z0\-9]*, !/usr/bin/* root
 .RE
 .fi
 .PP
@@ -8123,7 +8141,7 @@ sudo-workers mailing list,
 https://www.sudo.ws/mailman/listinfo/sudo-workers (public)
 or <sudo@sudo.ws> (private).
 .PP
-Please not report security vulnerabilities through public GitHub
+Please do not report security vulnerabilities through public GitHub
 issues, Bugzilla or mailing lists.
 Instead, report them via email to <Todd.Miller@sudo.ws>.
 You may encrypt your message with PGP if you would like, using

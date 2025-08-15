@@ -687,8 +687,6 @@ plugins/sudoers/mkdefaults
 plugins/sudoers/parse.h
 plugins/sudoers/parse_ldif.c
 plugins/sudoers/parser_warnx.c
-plugins/sudoers/pivot.c
-plugins/sudoers/pivot.h
 plugins/sudoers/po/README
 plugins/sudoers/po/ast.mo
 plugins/sudoers/po/ast.po
@@ -861,6 +859,8 @@ plugins/sudoers/regress/cvtsudoers/test4.out.ok
 plugins/sudoers/regress/cvtsudoers/test4.sh
 plugins/sudoers/regress/cvtsudoers/test40.out.ok
 plugins/sudoers/regress/cvtsudoers/test40.sh
+plugins/sudoers/regress/cvtsudoers/test41.out.ok
+plugins/sudoers/regress/cvtsudoers/test41.sh
 plugins/sudoers/regress/cvtsudoers/test5.out.ok
 plugins/sudoers/regress/cvtsudoers/test5.sh
 plugins/sudoers/regress/cvtsudoers/test6.out.ok
@@ -1032,6 +1032,12 @@ plugins/sudoers/regress/sudoers/test30.ldif2sudo.ok
 plugins/sudoers/regress/sudoers/test30.out.ok
 plugins/sudoers/regress/sudoers/test30.sudo.ok
 plugins/sudoers/regress/sudoers/test30.toke.ok
+plugins/sudoers/regress/sudoers/test31.in
+plugins/sudoers/regress/sudoers/test31.json.ok
+plugins/sudoers/regress/sudoers/test31.ldif.ok
+plugins/sudoers/regress/sudoers/test31.ldif2sudo.ok
+plugins/sudoers/regress/sudoers/test31.out.ok
+plugins/sudoers/regress/sudoers/test31.toke.ok
 plugins/sudoers/regress/sudoers/test4.in
 plugins/sudoers/regress/sudoers/test4.json.ok
 plugins/sudoers/regress/sudoers/test4.ldif.ok
@@ -1275,10 +1281,13 @@ po/uk.mo
 po/uk.po
 po/vi.mo
 po/vi.po
+po/yue.mo
+po/yue.po
 po/zh_CN.mo
 po/zh_CN.po
 po/zh_TW.mo
 po/zh_TW.po
+scripts/check_man.in
 scripts/config.guess
 scripts/config.sub
 scripts/generate_test_coverage.sh

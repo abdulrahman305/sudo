@@ -1,7 +1,7 @@
 .\"
 .\" SPDX-License-Identifier: ISC
 .\"
-.\" Copyright (c) 1994-1996, 1998-2005, 2007-2024
+.\" Copyright (c) 1994-1996, 1998-2005, 2007-2025
 .\"	Todd C. Miller <Todd.Miller@sudo.ws>
 .\"
 .\" Permission to use, copy, modify, and distribute this software for any
@@ -24,7 +24,7 @@
 .nr BA @BAMAN@
 .nr LC @LCMAN@
 .nr PS @PSMAN@
-.Dd December 20, 2024
+.Dd June 7, 2025
 .Dt SUDO @mansectsu@
 .Os Sudo @PACKAGE_VERSION@
 .Sh NAME
@@ -667,6 +667,9 @@ before running the
 .Ar command .
 The security policy may return an error if the user does not have
 permission to specify the root directory.
+.Pp
+This option is deprecated and will be removed in a future version of
+.Nm .
 .if \n(SL \{\
 .It Fl r Ar role , Fl -role Ns = Ns Ar role
 Run the
@@ -1355,6 +1358,8 @@ option was specified.
 If set,
 .Ev PS1
 will be set to its value for the program being run.
+.It Ev SUDO_TTY
+Set to the terminal device of the user who invoked sudo, if one is present.
 .It Ev SUDO_UID
 Set to the user-ID of the user who invoked sudo.
 .It Ev SUDO_USER
@@ -1676,7 +1681,7 @@ sudo-workers mailing list,
 https://www.sudo.ws/mailman/listinfo/sudo-workers (public)
 or <sudo@sudo.ws> (private).
 .Pp
-Please not report security vulnerabilities through public GitHub
+Please do not report security vulnerabilities through public GitHub
 issues, Bugzilla or mailing lists.
 Instead, report them via email to <Todd.Miller@sudo.ws>.
 You may encrypt your message with PGP if you would like, using

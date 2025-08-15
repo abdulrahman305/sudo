@@ -350,6 +350,18 @@ sudoers_check_common(struct sudoers_context *ctx, int pwflag)
     time_t now;
     debug_decl(sudoers_check_common, SUDOERS_DEBUG_PLUGIN);
 
+    /* The user may only specify a host for "sudo -l". */
+    if (!ISSET(ctx->mode, MODE_LIST|MODE_CHECK)) {
+	if (strcmp(ctx->runas.host, ctx->user.host) != 0) {
+	    log_warningx(ctx, SLOG_NO_STDERR|SLOG_AUDIT,
+		N_("user not allowed to set remote host for command"));
+	    sudo_warnx("%s",
+		U_("a remote host may only be specified when listing privileges."));
+	    ret = false;
+	    goto done;
+	}
+    }
+
     /* If given the -P option, set the "preserve_groups" flag. */
     if (ISSET(ctx->mode, MODE_PRESERVE_GROUPS))
 	def_preserve_groups = true;
@@ -1080,7 +1092,6 @@ init_vars(struct sudoers_context *ctx, char * const envp[])
 int
 set_cmnd_path(struct sudoers_context *ctx, const char *runchroot)
 {
-    struct sudoers_pivot pivot_state = SUDOERS_PIVOT_INITIALIZER;
     const char *cmnd_in;
     char *cmnd_out = NULL;
     char *path = ctx->user.path;
@@ -1099,13 +1110,7 @@ set_cmnd_path(struct sudoers_context *ctx, const char *runchroot)
     if (def_secure_path && !user_is_exempt(ctx))
 	path = def_secure_path;
 
-    /* Pivot root. */
-    if (runchroot != NULL) {
-	if (!pivot_root(runchroot, &pivot_state))
-	    goto error;
-    }
-
-    ret = resolve_cmnd(ctx, cmnd_in, &cmnd_out, path);
+    ret = resolve_cmnd(ctx, cmnd_in, &cmnd_out, path, runchroot);
     if (ret == FOUND) {
 	char *slash = strrchr(cmnd_out, '/');
 	if (slash != NULL) {
@@ -1122,14 +1127,8 @@ set_cmnd_path(struct sudoers_context *ctx, const char *runchroot)
     else
 	ctx->user.cmnd = cmnd_out;
 
-    /* Restore root. */
-    if (runchroot != NULL)
-	(void)unpivot_root(&pivot_state);
-
     debug_return_int(ret);
 error:
-    if (runchroot != NULL)
-	(void)unpivot_root(&pivot_state);
     free(cmnd_out);
     debug_return_int(NOT_FOUND_ERROR);
 }

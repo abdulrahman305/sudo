@@ -18,7 +18,7 @@ dnl ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 dnl OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 dnl
 AC_PREREQ([2.69])
-AC_INIT([sudo], [1.9.16p2], [https://bugzilla.sudo.ws/], [sudo])
+AC_INIT([sudo], [1.9.17p2], [https://bugzilla.sudo.ws/], [sudo])
 AC_CONFIG_HEADERS([config.h pathnames.h])
 AC_CONFIG_SRCDIR([src/sudo.c])
 AC_CONFIG_AUX_DIR([scripts])
@@ -205,7 +205,7 @@ logfac=auth
 goodpri=notice
 badpri=alert
 loglen=80
-ignore_dot=off
+ignore_dot=on
 mail_no_user=on
 mail_no_host=off
 mail_no_perms=off
@@ -444,9 +444,7 @@ AC_ARG_WITH(csops, [AS_HELP_STRING([--with-csops], [add CSOps standard options])
 [case $with_csops in
     yes)	AC_MSG_NOTICE([adding CSOps standard options])
 		CHECKSIA=false
-		with_ignore_dot=yes
 		insults=on
-		with_env_editor=yes
 		: ${mansectsu='8'}
 		: ${mansectform='5'}
 		: ${mansectmisc='7'}
@@ -665,16 +663,7 @@ AC_ARG_WITH(loglen, [AS_HELP_STRING([--with-loglen], [maximum length of a log fi
 esac])
 AC_DEFINE_UNQUOTED(MAXLOGFILELEN, $loglen, [The max number of chars per log file line (for line wrapping).])
 
-AC_ARG_WITH(ignore-dot, [AS_HELP_STRING([--with-ignore-dot], [ignore '.' in the PATH])],
-[case $with_ignore_dot in
-    yes)	ignore_dot=on
-		AC_DEFINE(IGNORE_DOT_PATH)
-		;;
-    no)		ignore_dot=off
-		;;
-    *)		AC_MSG_ERROR([--with-ignore-dot does not take an argument.])
-		;;
-esac])
+AC_ARG_WITH(ignore-dot, [AS_HELP_STRING([--with-ignore-dot], [deprecated, use --disable-ignore-dot])], [enable_ignore_dot="$with_ignore_dot"])
 
 AC_ARG_WITH(mail-if-no-user, [AS_HELP_STRING([--without-mail-if-no-user], [do not send mail if user not in sudoers])],
 [case $with_mail_if_no_user in
@@ -1279,6 +1268,19 @@ AC_ARG_ENABLE(env_debug,
   esac
 ])
 
+AC_ARG_ENABLE(ignore-dot,
+[AS_HELP_STRING([--disable-ignore-dot], [allow '.' and "" in the PATH])],
+[ case "$enableval" in
+    yes)	ignore_dot=on
+		;;
+    no)		ignore_dot=off
+		AC_DEFINE(ALLOW_DOT_PATH)
+		;;
+    *)		AC_MSG_WARN([ignoring unknown argument to --enable-ignore-dot: $enableval])
+		;;
+  esac
+])
+
 AC_ARG_ENABLE(postinstall,
 [AS_HELP_STRING([--enable-postinstall], [Script to run after the install phase])],
 [ case "$enableval" in
@@ -1384,7 +1386,7 @@ AC_ARG_ENABLE(leaks,
     yes)    ;;
     no)	    AC_DEFINE(NO_LEAKS)
 	    ;;
-    *)	    AC_MSG_WARN([ignoring unknown argument to --disable-leaks: $enableval])
+    *)	    AC_MSG_WARN([ignoring unknown argument to --enable-leaks: $enableval])
 	    ;;
   esac
 ])
@@ -1727,36 +1729,39 @@ AC_PATH_PROG(SHA1SUM, [sha1sum], [openssl dgst -sha1])
 AC_PATH_PROG(UNAMEPROG, [uname], [uname])
 AC_PATH_PROG(TRPROG, [tr], [tr])
 AC_PATH_PROG(GROFFPROG, [groff], [groff])
-AC_CACHE_CHECK([for mandoc or nroff], [ac_cv_path_NROFF], [
-    AC_PATH_PROGS_FEATURE_CHECK([NROFF], [mandoc nroff], [ac_cv_path_NROFF="$ac_path_NROFF"], [ac_cv_path_NROFF=no])
+AC_PATH_PROG(MANDOCPROG, [mandoc], [mandoc])
+AS_IF([test "$ac_cv_path_MANDOCPROG" != "mandoc"], [
+    ac_cv_path_NROFFPROG="$ac_cv_path_MANDOCPROG"
+], [
+    AC_PATH_PROG(NROFFPROG, [nroff], [nroff])
 ])
-case "$ac_cv_path_NROFF" in
-*mandoc|no)
-    # Prefer mdoc format for mandoc (or when no formatter is present).
-    : ${MANTYPE='mdoc'}
-    ;;
-*)
-    # Check whether nroff supports -mdoc, this may produce incorrect
-    # results when cross-compiling.
-    test -n "$MANTYPE" && sudo_cv_var_mantype="$MANTYPE"
-    AC_CACHE_CHECK([which macro set to use for manual pages],
-	[sudo_cv_var_mantype],
-	[
+# Check whether nroff supports -mdoc, this may produce incorrect
+# results when cross-compiling.
+test -n "$MANTYPE" && sudo_cv_var_mantype="$MANTYPE"
+AC_CACHE_CHECK([which macro set to use for manual pages],
+    [sudo_cv_var_mantype],
+    [
+	case "$ac_cv_path_NROFFPROG" in
+	*mandoc|nroff)
+	    # Prefer mdoc format for mandoc (or when no formatter is present).
+	    sudo_cv_var_mantype="mdoc"
+	    ;;
+	*)
 	    sudo_cv_var_mantype="man"
 	    echo ".Sh NAME" > conftest
 	    echo ".Nm sudo" >> conftest
 	    echo ".Nd sudo" >> conftest
 	    echo ".Sh DESCRIPTION" >> conftest
 	    echo "sudo" >> conftest
-	    if $ac_cv_path_NROFF -mdoc conftest >/dev/null 2>&1; then
+	    if $ac_cv_path_NROFFPROG -mdoc conftest >/dev/null 2>&1; then
 		sudo_cv_var_mantype="mdoc"
 	    fi
 	    rm -f conftest
-	]
-    )
-    MANTYPE="$sudo_cv_var_mantype"
-    ;;
-esac
+	    ;;
+	esac
+    ]
+)
+MANTYPE="$sudo_cv_var_mantype"
 
 dnl
 dnl If a config.cache exists make sure it matches the current host.
@@ -4470,7 +4475,7 @@ AS_IF([test X"$INIT_SCRIPT" != X""], [
     AC_CONFIG_FILES([etc/init.d/sudo.conf])
 ])
 
-AC_CONFIG_FILES([Makefile docs/Makefile examples/Makefile examples/sudoers examples/sudo.conf examples/sudo_logsrvd.conf examples/syslog.conf include/Makefile lib/eventlog/Makefile lib/fuzzstub/Makefile lib/iolog/Makefile lib/logsrv/Makefile lib/protobuf-c/Makefile lib/ssl_compat/Makefile lib/util/Makefile lib/util/regress/harness lib/util/util.exp logsrvd/Makefile src/intercept.exp src/sudo_usage.h src/Makefile plugins/audit_json/Makefile plugins/sample/Makefile plugins/group_file/Makefile plugins/sample_approval/Makefile plugins/system_group/Makefile plugins/sudoers/Makefile plugins/sudoers/regress/harness plugins/sudoers/sudoers])
+AC_CONFIG_FILES([Makefile docs/Makefile examples/Makefile examples/sudoers examples/sudo.conf examples/sudo_logsrvd.conf examples/syslog.conf include/Makefile lib/eventlog/Makefile lib/fuzzstub/Makefile lib/iolog/Makefile lib/logsrv/Makefile lib/protobuf-c/Makefile lib/ssl_compat/Makefile lib/util/Makefile lib/util/regress/harness lib/util/util.exp logsrvd/Makefile src/intercept.exp src/sudo_usage.h src/Makefile plugins/audit_json/Makefile plugins/sample/Makefile plugins/group_file/Makefile plugins/sample_approval/Makefile plugins/system_group/Makefile plugins/sudoers/Makefile plugins/sudoers/regress/harness plugins/sudoers/sudoers scripts/check_man])
 AC_CONFIG_COMMANDS([harness], [chmod +x lib/util/regress/harness plugins/sudoers/regress/harness])
 
 AC_OUTPUT
@@ -4756,7 +4761,7 @@ AH_TEMPLATE(HAVE_ST_MTIMESPEC, [Define to 1 if your struct stat has an st_mtimes
 AH_TEMPLATE(HAVE_ST_NMTIME, [Define to 1 if your struct stat has an st_nmtime member.])
 AH_TEMPLATE(HAVE___PROGNAME, [Define to 1 if your crt0.o defines the __progname symbol for you.])
 AH_TEMPLATE(HOST_IN_LOG, [Define to 1 if you want the hostname to be entered into the log file.])
-AH_TEMPLATE(IGNORE_DOT_PATH, [Define to 1 if you want to ignore '.' and empty PATH elements.])
+AH_TEMPLATE(ALLOW_DOT_PATH, [Define to 1 if you want sudo to honor '.' and "" in the PATH.])
 AH_TEMPLATE(LOGGING, [Define to SLOG_SYSLOG, SLOG_FILE, or SLOG_BOTH.])
 AH_TEMPLATE(LONG_OTP_PROMPT, [Define to 1 if you want a two line OTP (S/Key or OPIE) prompt.])
 AH_TEMPLATE(NO_AUTHENTICATION, [Define to 1 if you don't want sudo to prompt for a password by default.])
