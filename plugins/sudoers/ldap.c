@@ -18,11 +18,6 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-/*
- * This is an open source non-commercial project. Dear PVS-Studio, please check it.
- * PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
- */
-
 #include <config.h>
 
 #include <sys/types.h>
@@ -378,7 +373,7 @@ sudo_ldap_get_first_rdn(LDAP *ld, LDAPMessage *entry, int *rc)
     ldap_memfree(dn);
     debug_return_str(rdn);
 #else
-    char *dn, **edn;
+    char *dn, **edn, *rdn;
     debug_decl(sudo_ldap_get_first_rdn, SUDOERS_DEBUG_LDAP);
 
     if ((dn = ldap_get_dn(ld, entry)) == NULL) {
@@ -393,8 +388,10 @@ sudo_ldap_get_first_rdn(LDAP *ld, LDAPMessage *entry, int *rc)
 	*rc = LDAP_NO_MEMORY;
 	debug_return_str(NULL);
     }
-    *rc = LDAP_SUCCESS;
-    debug_return_str(edn[0]);
+    rdn = strdup(edn[0]);
+    *rc = rdn ? LDAP_SUCCESS : LDAP_NO_MEMORY;
+    ldap_value_free(edn);
+    debug_return_str(rdn);
 #endif
 }
 
@@ -956,14 +953,6 @@ sudo_ldap_build_pass1(struct sudoers_context *ctx, LDAP *ld, struct passwd *pw)
 	}
     }
 
-    /* Done with groups. */
-    if (gidlist != NULL)
-	sudo_gidlist_delref(gidlist);
-    if (grlist != NULL)
-	sudo_grlist_delref(grlist);
-    if (grp != NULL)
-	sudo_gr_delref(grp);
-
     /* Add netgroups (if any), freeing the list as we go. */
     while ((ng = STAILQ_FIRST(&netgroups)) != NULL) {
 	STAILQ_REMOVE_HEAD(&netgroups, entries);
@@ -997,6 +986,13 @@ sudo_ldap_build_pass1(struct sudoers_context *ctx, LDAP *ld, struct passwd *pw)
 
     CHECK_STRLCAT(buf, ")", sz); /* closes the global OR or the global AND */
 
+out:
+    if (gidlist != NULL)
+	sudo_gidlist_delref(gidlist);
+    if (grlist != NULL)
+	sudo_grlist_delref(grlist);
+    if (grp != NULL)
+	sudo_gr_delref(grp);
     free(notbuf);
     debug_return_str(buf);
 overflow:
@@ -1014,8 +1010,8 @@ bad:
 	free(ng);
     }
     free(buf);
-    free(notbuf);
-    debug_return_str(NULL);
+    buf = NULL;
+    goto out;
 }
 
 /*

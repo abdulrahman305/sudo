@@ -16,11 +16,6 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-/*
- * This is an open source non-commercial project. Dear PVS-Studio, please check it.
- * PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
- */
-
 #include <config.h>
 
 #include <sys/stat.h>
@@ -55,7 +50,7 @@
 #include <logsrvd.h>
 
 static bool
-type_matches(InfoMessage *info, const char *source,
+type_matches(const InfoMessage *info, const char *source,
     InfoMessage__ValueCase value_case)
 {
     const void *val = info->u.strval;	/* same for strlistval */
@@ -84,7 +79,7 @@ type_matches(InfoMessage *info, const char *source,
  * Returns a NULL-terminated string vector.
  */
 static char **
-strlist_copy(InfoMessage__StringList *strlist)
+strlist_copy(const InfoMessage__StringList *strlist)
 {
     char **dst, **src = strlist->strings;
     size_t i, len = strlist->n_strings;
@@ -133,8 +128,8 @@ strvec_free(char *vec[])
  * Returns true on success and false on failure.
  */
 struct eventlog *
-evlog_new(TimeSpec *submit_time, InfoMessage **info_msgs, size_t infolen,
-    struct connection_closure *closure)
+evlog_new(const TimeSpec *submit_time, InfoMessage * const *info_msgs,
+    size_t infolen, struct connection_closure *closure)
 {
     const char *source = closure->journal_path ? closure->journal_path :
 	closure->ipaddr;
@@ -177,8 +172,12 @@ evlog_new(TimeSpec *submit_time, InfoMessage **info_msgs, size_t infolen,
 
     /* Pull out values by key from info array. */
     for (idx = 0; idx < infolen; idx++) {
-	InfoMessage *info = info_msgs[idx];
-	const char *key = info->key;
+	const InfoMessage *info = info_msgs[idx];
+	const char *key;
+
+	if (info == NULL)
+	    continue;
+	key = info->key;
 	switch (key[0]) {
 	case 'c':
 	    if (strcmp(key, "columns") == 0) {
@@ -689,7 +688,7 @@ iolog_flush_all(struct connection_closure *closure)
 }
 
 bool
-iolog_init(AcceptMessage *msg, struct connection_closure *closure)
+iolog_init(const AcceptMessage *msg, struct connection_closure *closure)
 {
     struct eventlog *evlog = closure->evlog;
     debug_decl(iolog_init, SUDO_DEBUG_UTIL);
@@ -922,7 +921,7 @@ done:
  * We cannot use timespecadd here since delta is not struct timespec.
  */
 void
-update_elapsed_time(TimeSpec *delta, struct timespec *elapsed)
+update_elapsed_time(const TimeSpec *delta, struct timespec *elapsed)
 {
     debug_decl(update_elapsed_time, SUDO_DEBUG_UTIL);
 

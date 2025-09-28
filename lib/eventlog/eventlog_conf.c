@@ -20,11 +20,6 @@
  * Materiel Command, USAF, under agreement number F39502-99-1-0512.
  */
 
-/*
- * This is an open source non-commercial project. Dear PVS-Studio, please check it.
- * PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
- */
-
 #include <config.h>
 
 #include <sys/types.h>
@@ -64,11 +59,11 @@ static void eventlog_stub_close_log(int type, FILE *fp);
 static struct eventlog_config evl_conf = {
     EVLOG_NONE,			/* type */
     EVLOG_SUDO,			/* format */
+    0,				/* file_maxlen */
+    MAXSYSLOGLEN,		/* syslog_maxlen */
     LOG_NOTICE,			/* syslog_acceptpri */
     LOG_ALERT,			/* syslog_rejectpri */
     LOG_ALERT,			/* syslog_alertpri */
-    MAXSYSLOGLEN,		/* syslog_maxlen */
-    0,				/* file_maxlen */
     ROOT_UID,			/* mailuid */
     false,			/* omit_hostname */
     _PATH_SUDO_LOGFILE,		/* logpath */

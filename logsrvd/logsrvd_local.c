@@ -16,11 +16,6 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-/*
- * This is an open source non-commercial project. Dear PVS-Studio, please check it.
- * PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
- */
-
 #include <config.h>
 
 #include <sys/stat.h>
@@ -177,7 +172,7 @@ bad:
  * Parse and store an AcceptMessage locally.
  */
 bool
-store_accept_local(AcceptMessage *msg, uint8_t *buf, size_t len,
+store_accept_local(const AcceptMessage *msg, const uint8_t *buf, size_t len,
     struct connection_closure *closure)
 {
     struct logsrvd_info_closure info = { msg->info_msgs, msg->n_info_msgs };
@@ -254,7 +249,7 @@ done:
  * Parse and store a RejectMessage locally.
  */
 bool
-store_reject_local(RejectMessage *msg, uint8_t *buf, size_t len,
+store_reject_local(const RejectMessage *msg, const uint8_t *buf, size_t len,
     struct connection_closure *closure)
 {
     struct logsrvd_info_closure info = { msg->info_msgs, msg->n_info_msgs };
@@ -304,7 +299,7 @@ done:
 }
 
 static bool
-store_exit_info_json(int dfd, struct eventlog *evlog)
+store_exit_info_json(int dfd, const struct eventlog *evlog)
 {
     struct json_container jsonc = { 0 };
     struct json_value json_value;
@@ -398,19 +393,20 @@ done:
 }
 
 bool
-store_exit_local(ExitMessage *msg, uint8_t *buf, size_t len,
+store_exit_local(const ExitMessage *msg, const uint8_t *buf, size_t len,
     struct connection_closure *closure)
 {
     struct eventlog *evlog = closure->evlog;
     int flags = 0;
     debug_decl(store_exit_local, SUDO_DEBUG_UTIL);
 
+    /* TODO: store the "error" string if present. */
     if (msg->run_time != NULL) {
 	evlog->run_time.tv_sec = (time_t)msg->run_time->tv_sec;
 	evlog->run_time.tv_nsec = (long)msg->run_time->tv_nsec;
     }
     evlog->exit_value = msg->exit_value;
-    if (msg->signal != NULL && msg->signal[0] != '\0') {
+    if (msg->signal[0] != '\0') {
 	sudo_debug_printf(SUDO_DEBUG_INFO|SUDO_DEBUG_LINENO,
 	    "command was killed by SIG%s%s", msg->signal,
 	    msg->dumped_core ? " (core dumped)" : "");
@@ -454,7 +450,7 @@ store_exit_local(ExitMessage *msg, uint8_t *buf, size_t len,
 }
 
 bool
-store_restart_local(RestartMessage *msg, uint8_t *buf, size_t len,
+store_restart_local(const RestartMessage *msg, const uint8_t *buf, size_t len,
     struct connection_closure *closure)
 {
     struct timespec target;
@@ -530,7 +526,7 @@ bad:
 }
 
 bool
-store_alert_local(AlertMessage *msg, uint8_t *buf, size_t len,
+store_alert_local(const AlertMessage *msg, const uint8_t *buf, size_t len,
     struct connection_closure *closure)
 {
     struct eventlog *evlog = NULL;
@@ -565,8 +561,8 @@ done:
 }
 
 bool
-store_iobuf_local(int iofd, IoBuffer *iobuf, uint8_t *buf, size_t buflen,
-    struct connection_closure *closure)
+store_iobuf_local(int iofd, const IoBuffer *iobuf, const uint8_t *buf,
+    size_t buflen, struct connection_closure *closure)
 {
     const struct eventlog *evlog = closure->evlog;
     struct ProtobufCBinaryData data = iobuf->data;
@@ -637,8 +633,8 @@ bad:
 }
 
 bool
-store_winsize_local(ChangeWindowSize *msg, uint8_t *buf, size_t buflen,
-    struct connection_closure *closure)
+store_winsize_local(const ChangeWindowSize *msg, const uint8_t *buf,
+    size_t buflen, struct connection_closure *closure)
 {
     const char *errstr;
     char tbuf[1024];
@@ -672,8 +668,8 @@ bad:
 }
 
 bool
-store_suspend_local(CommandSuspend *msg, uint8_t *buf, size_t buflen,
-    struct connection_closure *closure)
+store_suspend_local(const CommandSuspend *msg, const uint8_t *buf,
+    size_t buflen, struct connection_closure *closure)
 {
     const char *errstr;
     char tbuf[1024];

@@ -498,14 +498,6 @@ AC_ARG_WITH(SecurID, [AS_HELP_STRING([--with-SecurID[[=DIR]]], [enable SecurID s
 		;;
 esac])
 
-AC_ARG_WITH(fwtk, [AS_HELP_STRING([--with-fwtk[[=DIR]]], [enable FWTK AuthSRV support])],
-[case $with_fwtk in
-    no)		;;
-    *)		AC_DEFINE(HAVE_FWTK)
-		AUTH_EXCL="$AUTH_EXCL FWTK"
-		;;
-esac])
-
 AC_ARG_WITH(kerb5, [AS_HELP_STRING([--with-kerb5[[=DIR]]], [enable Kerberos V support])],
 [case $with_kerb5 in
     no)		;;
@@ -1950,7 +1942,7 @@ case "$host" in
 			    portable_flag="+DAportable"
 			])
 			CFLAGS="$CFLAGS $portable_flag"
-			AC_CACHE_CHECK([whether $CC understands $portable_flag],
+			AC_CACHE_CHECK([whether the C compiler understands $portable_flag],
 			    [sudo_cv_var_daportable],
 			    [AC_LINK_IFELSE(
 				[AC_LANG_PROGRAM([[]], [[]])],
@@ -3686,19 +3678,6 @@ AS_IF([test ${CHECKSIA-'false'} = "true"], [
 ])
 
 dnl
-dnl extra FWTK libs + includes
-dnl
-AS_IF([test ${with_fwtk-'no'} != "no"], [
-    AS_IF([test "$with_fwtk" != "yes"], [
-	SUDO_APPEND_LIBPATH(SUDOERS_LDFLAGS, [${with_fwtk}])
-	AX_APPEND_FLAG([-I${with_fwtk}], [CPPFLAGS])
-	with_fwtk=yes
-    ])
-    SUDOERS_LIBS="${SUDOERS_LIBS} -lauth -lfwall"
-    AUTH_OBJS="$AUTH_OBJS fwtk.lo"
-])
-
-dnl
 dnl extra SecurID lib + includes
 dnl
 AS_IF([test ${with_SecurID-'no'} != "no"], [
@@ -4252,7 +4231,7 @@ AS_IF([test -n "$GCC"], [
     # The fallthrough attribute is supported by gcc 7.0 and clang 10.
     # This test relies on AC_LANG_WERROR.
     #
-    AC_CACHE_CHECK([whether $CC supports the fallthrough attribute],
+    AC_CACHE_CHECK([whether the C compiler supports the fallthrough attribute],
 	[sudo_cv_var_fallthrough_attribute],
 	[AC_COMPILE_IFELSE([AC_LANG_SOURCE([[
 	    int main(int argc, char *argv[])
@@ -4722,7 +4701,6 @@ AH_TEMPLATE(HAVE_DISPCRYPT, [Define to 1 if you have the 'dispcrypt' function.])
 AH_TEMPLATE(HAVE_DLOPEN, [Define to 1 if you have the 'dlopen' function.])
 AH_TEMPLATE(HAVE_FCNTL_CLOSEM, [Define to 1 if your system has the F_CLOSEM fcntl.])
 AH_TEMPLATE(HAVE_FNMATCH, [Define to 1 if you have the 'fnmatch' function.])
-AH_TEMPLATE(HAVE_FWTK, [Define to 1 if you use the FWTK authsrv daemon.])
 AH_TEMPLATE(HAVE_GETPRPWNAM, [Define to 1 if you have the 'getprpwnam' function.  (SecureWare-style shadow passwords).])
 AH_TEMPLATE(HAVE_GETPWNAM_SHADOW, [Define to 1 if you have the 'getpwnam_shadow' function.])
 AH_TEMPLATE(HAVE_GETSPNAM, [Define to 1 if you have the 'getspnam' function (SVR4-style shadow passwords).])

@@ -1,7 +1,7 @@
 /*
  * SPDX-License-Identifier: ISC
  *
- * Copyright (c) 2019-2023 Todd C. Miller <Todd.Miller@sudo.ws>
+ * Copyright (c) 2019-2025 Todd C. Miller <Todd.Miller@sudo.ws>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -14,11 +14,6 @@
  * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
- */
-
-/*
- * This is an open source non-commercial project. Dear PVS-Studio, please check it.
- * PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
  */
 
 #include <config.h>
@@ -34,6 +29,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <netdb.h>
 #ifdef HAVE_STDBOOL_H
 # include <stdbool.h>
 #else
@@ -126,6 +122,7 @@ connection_closure_free(struct connection_closure *closure)
 		SSL_shutdown(closure->ssl);
 	    SSL_free(closure->ssl);
 	}
+	free(closure->name);
 #endif
 	if (closure->sock != -1) {
 	    shutdown(closure->sock, SHUT_RDWR);
@@ -442,7 +439,7 @@ done:
  * AcceptMessage handler.
  */
 static bool
-handle_accept(AcceptMessage *msg, uint8_t *buf, size_t len,
+handle_accept(const AcceptMessage *msg, const uint8_t *buf, size_t len,
     struct connection_closure *closure)
 {
     const char *source = closure->journal_path ? closure->journal_path :
@@ -458,7 +455,7 @@ handle_accept(AcceptMessage *msg, uint8_t *buf, size_t len,
     }
 
     /* Check that message is valid. */
-    if (msg->submit_time == NULL || msg->n_info_msgs == 0) {
+    if (msg == NULL || msg->submit_time == NULL || msg->n_info_msgs == 0) {
 	sudo_warnx(U_("%s: %s"), source, U_("invalid AcceptMessage"));
 	closure->errstr = _("invalid AcceptMessage");
 	debug_return_bool(false);
@@ -479,7 +476,7 @@ handle_accept(AcceptMessage *msg, uint8_t *buf, size_t len,
  * RejectMessage handler.
  */
 static bool
-handle_reject(RejectMessage *msg, uint8_t *buf, size_t len,
+handle_reject(const RejectMessage *msg, const uint8_t *buf, size_t len,
     struct connection_closure *closure)
 {
     const char *source = closure->journal_path ? closure->journal_path :
@@ -495,7 +492,8 @@ handle_reject(RejectMessage *msg, uint8_t *buf, size_t len,
     }
 
     /* Check that message is valid. */
-    if (msg->submit_time == NULL || msg->n_info_msgs == 0) {
+    if (msg == NULL || msg->submit_time == NULL || msg->reason[0] == '\0' ||
+	    msg->n_info_msgs == 0) {
 	sudo_warnx(U_("%s: %s"), source, U_("invalid RejectMessage"));
 	closure->errstr = _("invalid RejectMessage");
 	debug_return_bool(false);
@@ -512,7 +510,7 @@ handle_reject(RejectMessage *msg, uint8_t *buf, size_t len,
 }
 
 static bool
-handle_exit(ExitMessage *msg, uint8_t *buf, size_t len,
+handle_exit(const ExitMessage *msg, const uint8_t *buf, size_t len,
     struct connection_closure *closure)
 {
     const char *source = closure->journal_path ? closure->journal_path :
@@ -526,8 +524,12 @@ handle_exit(ExitMessage *msg, uint8_t *buf, size_t len,
 	debug_return_bool(false);
     }
 
-    /* Check that message is valid. */
-    if (msg->run_time == NULL) {
+    /*
+     * Check that message is valid.
+     * The run_time field is optional and will not be present
+     * when sending old, pre-JSON I/O logs via sudo_sendlog.
+     */
+    if (msg == NULL) {
 	sudo_warnx(U_("%s: %s"), source, U_("invalid ExitMessage"));
 	closure->errstr = _("invalid ExitMessage");
 	debug_return_bool(false);
@@ -566,7 +568,7 @@ handle_exit(ExitMessage *msg, uint8_t *buf, size_t len,
 }
 
 static bool
-handle_restart(RestartMessage *msg, uint8_t *buf, size_t len,
+handle_restart(const RestartMessage *msg, const uint8_t *buf, size_t len,
     struct connection_closure *closure)
 {
     const char *source = closure->journal_path ? closure->journal_path :
@@ -581,7 +583,7 @@ handle_restart(RestartMessage *msg, uint8_t *buf, size_t len,
     }
 
     /* Check that message is valid. */
-    if (msg->log_id == NULL || msg->resume_point == NULL) {
+    if (msg == NULL || msg->log_id[0] == '\0' || msg->resume_point == NULL) {
 	sudo_warnx(U_("%s: %s"), source, U_("invalid RestartMessage"));
 	closure->errstr = _("invalid RestartMessage");
 	debug_return_bool(false);
@@ -589,6 +591,14 @@ handle_restart(RestartMessage *msg, uint8_t *buf, size_t len,
     sudo_debug_printf(SUDO_DEBUG_INFO,
 	"%s: received RestartMessage for %s from %s", __func__, msg->log_id,
 	source);
+
+    /* The log_id is used to create a path name, prevent path traversal. */
+    if (contains_dot_dot(msg->log_id)) {
+	sudo_warnx(U_("%s: %s"), source,
+	    U_("RestartMessage log_id path traversal attack"));
+	closure->errstr = _("invalid RestartMessage");
+	debug_return_bool(false);
+    }
 
     /* Only I/O logs are restartable. */
     closure->log_io = true;
@@ -608,7 +618,7 @@ handle_restart(RestartMessage *msg, uint8_t *buf, size_t len,
 }
 
 static bool
-handle_alert(AlertMessage *msg, uint8_t *buf, size_t len,
+handle_alert(const AlertMessage *msg, const uint8_t *buf, size_t len,
     struct connection_closure *closure)
 {
     const char *source = closure->journal_path ? closure->journal_path :
@@ -616,7 +626,7 @@ handle_alert(AlertMessage *msg, uint8_t *buf, size_t len,
     debug_decl(handle_alert, SUDO_DEBUG_UTIL);
 
     /* Check that message is valid. */
-    if (msg->alert_time == NULL || msg->reason == NULL) {
+    if (msg == NULL || msg->alert_time == NULL || msg->reason[0] == '\0') {
 	sudo_warnx(U_("%s: %s"), source, U_("invalid AlertMessage"));
 	closure->errstr = _("invalid AlertMessage");
 	debug_return_bool(false);
@@ -646,7 +656,7 @@ enable_commit(struct connection_closure *closure)
 }
 
 static bool
-handle_iobuf(int iofd, IoBuffer *iobuf, uint8_t *buf, size_t len,
+handle_iobuf(int iofd, const IoBuffer *iobuf, const uint8_t *buf, size_t len,
     struct connection_closure *closure)
 {
     const char *source = closure->journal_path ? closure->journal_path :
@@ -665,7 +675,7 @@ handle_iobuf(int iofd, IoBuffer *iobuf, uint8_t *buf, size_t len,
     }
 
     /* Check that message is valid. */
-    if (iobuf->delay == NULL) {
+    if (iobuf == NULL || iobuf->delay == NULL || iobuf->data.len == 0) {
 	sudo_warnx(U_("%s: %s"), source, U_("invalid IoBuffer"));
 	closure->errstr = _("invalid IoBuffer");
 	debug_return_bool(false);
@@ -682,7 +692,7 @@ handle_iobuf(int iofd, IoBuffer *iobuf, uint8_t *buf, size_t len,
 }
 
 static bool
-handle_winsize(ChangeWindowSize *msg, uint8_t *buf, size_t len,
+handle_winsize(const ChangeWindowSize *msg, const uint8_t *buf, size_t len,
     struct connection_closure *closure)
 {
     const char *source = closure->journal_path ? closure->journal_path :
@@ -701,7 +711,7 @@ handle_winsize(ChangeWindowSize *msg, uint8_t *buf, size_t len,
     }
 
     /* Check that message is valid. */
-    if (msg->delay == NULL) {
+    if (msg == NULL || msg->delay == NULL) {
 	sudo_warnx(U_("%s: %s"), source, U_("invalid ChangeWindowSize"));
 	closure->errstr = _("invalid ChangeWindowSize");
 	debug_return_bool(false);
@@ -718,7 +728,7 @@ handle_winsize(ChangeWindowSize *msg, uint8_t *buf, size_t len,
 }
 
 static bool
-handle_suspend(CommandSuspend *msg, uint8_t *buf, size_t len,
+handle_suspend(const CommandSuspend *msg, const uint8_t *buf, size_t len,
     struct connection_closure *closure)
 {
     const char *source = closure->journal_path ? closure->journal_path :
@@ -737,7 +747,7 @@ handle_suspend(CommandSuspend *msg, uint8_t *buf, size_t len,
     }
 
     /* Check that message is valid. */
-    if (msg->delay == NULL || msg->signal == NULL) {
+    if (msg == NULL || msg->delay == NULL || msg->signal[0] == '\0') {
 	sudo_warnx(U_("%s: %s"), source, U_("invalid CommandSuspend"));
 	closure->errstr = _("invalid CommandSuspend");
 	debug_return_bool(false);
@@ -754,7 +764,7 @@ handle_suspend(CommandSuspend *msg, uint8_t *buf, size_t len,
 }
 
 static bool
-handle_client_hello(ClientHello *msg, uint8_t *buf, size_t len,
+handle_client_hello(const ClientHello *msg, const uint8_t *buf, size_t len,
     struct connection_closure *closure)
 {
     const char *source = closure->journal_path ? closure->journal_path :
@@ -767,16 +777,22 @@ handle_client_hello(ClientHello *msg, uint8_t *buf, size_t len,
 	debug_return_bool(false);
     }
 
+    /* Check that message is valid. */
+    if (msg == NULL || msg->client_id[0] == '\0') {
+	sudo_warnx(U_("%s: %s"), source, U_("invalid ClientHello"));
+	closure->errstr = _("invalid ClientHello");
+	debug_return_bool(false);
+    }
     sudo_debug_printf(SUDO_DEBUG_INFO, "%s: received ClientHello",
 	__func__);
     sudo_debug_printf(SUDO_DEBUG_INFO, "%s: client ID %s",
-	__func__, msg->client_id ? msg->client_id : "unknown");
+	__func__, msg->client_id);
 
     debug_return_bool(true);
 }
 
 static bool
-handle_client_message(uint8_t *buf, size_t len,
+handle_client_message(const uint8_t *buf, size_t len,
     struct connection_closure *closure)
 {
     const char *source = closure->journal_path ? closure->journal_path :
@@ -1036,7 +1052,7 @@ client_msg_cb(int fd, int what, void *v)
 #if defined(HAVE_OPENSSL)
     if (closure->ssl != NULL) {
 	const int result = SSL_read_ex(closure->ssl, buf->data + buf->len,
-	    buf->size, &nread);
+	    buf->size - buf->len, &nread);
         if (result <= 0) {
 	    const char *errstr;
             switch (SSL_get_error(closure->ssl, result)) {
@@ -1142,6 +1158,9 @@ client_msg_cb(int fd, int what, void *v)
 	}
 	buf->off += msg_len;
     }
+    if (buf->len != buf->off) {
+	memmove(buf->data, buf->data + buf->off, buf->len - buf->off);
+    }
     buf->len -= buf->off;
     buf->off = 0;
 
@@ -1167,7 +1186,7 @@ close_connection:
  * Format and schedule a commit_point message.
  */
 bool
-schedule_commit_point(TimeSpec *commit_point,
+schedule_commit_point(const TimeSpec *commit_point,
     struct connection_closure *closure)
 {
     debug_decl(schedule_commit_point, SUDO_DEBUG_UTIL);
@@ -1175,7 +1194,7 @@ schedule_commit_point(TimeSpec *commit_point,
     if (closure->write_ev != NULL) {
 	/* Send an acknowledgement of what we've committed to disk. */
 	ServerMessage msg = SERVER_MESSAGE__INIT;
-	msg.u.commit_point = commit_point;
+	msg.u.commit_point = (TimeSpec *)commit_point;
 	msg.type_case = SERVER_MESSAGE__TYPE_COMMIT_POINT;
 
 	sudo_debug_printf(SUDO_DEBUG_INFO,
@@ -1294,17 +1313,13 @@ verify_peer_identity(int preverify_ok, X509_STORE_CTX *ctx)
     ssl = X509_STORE_CTX_get_ex_data(ctx, SSL_get_ex_data_X509_STORE_CTX_idx());
     closure = (struct connection_closure *)SSL_get_ex_data(ssl, 1);
 
-    result = validate_hostname(peer_cert, closure->ipaddr, closure->ipaddr, 1);
-
-    switch(result)
-    {
-        case MatchFound:
-            debug_return_int(1);
-        default:
-            sudo_debug_printf(SUDO_DEBUG_INFO|SUDO_DEBUG_LINENO,
-                "hostname validation failed");
-            debug_return_int(0);
+    result = validate_hostname(peer_cert, closure->name, closure->ipaddr);
+    if (result != MatchFound) {
+	sudo_debug_printf(SUDO_DEBUG_INFO|SUDO_DEBUG_LINENO,
+	    "hostname validation failed");
+	debug_return_int(0);
     }
+    debug_return_int(1);
 }
 
 /*
@@ -1427,7 +1442,7 @@ bad:
  */
 static bool
 new_connection(int sock, bool tls, const union sockaddr_union *sa_un,
-    struct sudo_event_base *evbase)
+    socklen_t salen, struct sudo_event_base *evbase)
 {
     struct connection_closure *closure;
     debug_decl(new_connection, SUDO_DEBUG_UTIL);
@@ -1471,6 +1486,24 @@ new_connection(int sock, bool tls, const union sockaddr_union *sa_un,
 		errstr ? errstr : strerror(errno));
             goto bad;
         }
+
+	if (logsrvd_conf_server_tls_check_peer()) {
+	    /* Hostname to verify in certificate during handshake. */
+	    char hbuf[NI_MAXHOST];
+	    const int error = getnameinfo(&sa_un->sa, salen, hbuf,
+		sizeof(hbuf), NULL, 0, NI_NAMEREQD);
+	    if (error == 0) {
+		closure->name = strdup(hbuf);
+		if (closure->name == NULL) {
+		    sudo_warnx(U_("%s: %s"), __func__,
+			U_("unable to allocate memory"));
+		    goto bad;
+		}
+	    } else {
+		sudo_gai_warn(error, _("unable to resolve host %s"),
+		    closure->ipaddr);
+	    }
+	}
 
         /* attach the closure object to the ssl connection object to make it
         available during hostname matching
@@ -1575,7 +1608,7 @@ listener_cb(int fd, int what, void *v)
 		sudo_warn("SO_KEEPALIVE");
 	    }
 	}
-	if (!new_connection(sock, l->tls, &sa_un, evbase)) {
+	if (!new_connection(sock, l->tls, &sa_un, salen, evbase)) {
 	    /* TODO: pause accepting on ENOMEM */
 	    sudo_debug_printf(SUDO_DEBUG_ERROR|SUDO_DEBUG_LINENO,
 		"unable to start new connection");

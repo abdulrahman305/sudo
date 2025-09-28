@@ -1,7 +1,7 @@
 /*
  * SPDX-License-Identifier: ISC
  *
- * Copyright (c) 2019-2022 Todd C. Miller <Todd.Miller@sudo.ws>
+ * Copyright (c) 2019-2023, 2025 Todd C. Miller <Todd.Miller@sudo.ws>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -14,11 +14,6 @@
  * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
- */
-
-/*
- * This is an open source non-commercial project. Dear PVS-Studio, please check it.
- * PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
  */
 
 #include <config.h>
@@ -144,7 +139,7 @@ bad:
  * The length parameter does not include space for the message's wire size.
  */
 static bool
-relay_enqueue_write(uint8_t *msgbuf, size_t len,
+relay_enqueue_write(const uint8_t *msgbuf, size_t len,
     struct connection_closure *closure)
 {
     struct relay_closure *relay_closure = closure->relay_closure;
@@ -503,7 +498,7 @@ connect_relay(struct connection_closure *closure)
  * Returns true on success, false on error.
  */
 static bool
-handle_server_hello(ServerHello *msg, struct connection_closure *closure)
+handle_server_hello(const ServerHello *msg, struct connection_closure *closure)
 {
     struct relay_closure *relay_closure = closure->relay_closure;
     debug_decl(handle_server_hello, SUDO_DEBUG_UTIL);
@@ -516,7 +511,7 @@ handle_server_hello(ServerHello *msg, struct connection_closure *closure)
     }
 
     /* Check that ServerHello is valid. */
-    if (msg->server_id == NULL || msg->server_id[0] == '\0') {
+    if (msg == NULL || msg->server_id == NULL || msg->server_id[0] == '\0') {
 	sudo_warnx(U_("%s: invalid ServerHello, missing server_id"),
 	    relay_closure->relay_name.ipaddr);
 	closure->errstr = _("invalid ServerHello");
@@ -533,11 +528,12 @@ handle_server_hello(ServerHello *msg, struct connection_closure *closure)
 }
 
 /*
- * Respond to a CommitPoint message from the relay.
+ * Respond to a commit_point ServerMessage from the relay.
  * Returns true on success, false on error.
  */
 static bool
-handle_commit_point(TimeSpec *commit_point, struct connection_closure *closure)
+handle_commit_point(const TimeSpec *commit_point,
+    struct connection_closure *closure)
 {
     debug_decl(handle_commit_point, SUDO_DEBUG_UTIL);
 
@@ -548,16 +544,24 @@ handle_commit_point(TimeSpec *commit_point, struct connection_closure *closure)
 	debug_return_bool(false);
     }
 
+    /* Check that ServerMessage's commit_point is valid. */
+    if (commit_point == NULL) {
+	sudo_warnx(U_("%s: invalid ServerMessage, missing commit_point"),
+	    closure->relay_closure->relay_name.ipaddr);
+	closure->errstr = _("invalid ServerMessage");
+	debug_return_bool(false);
+    }
+
     /* Pass commit point from relay to client. */
     debug_return_bool(schedule_commit_point(commit_point, closure));
 }
 
 /*
- * Respond to a LogId message from the relay.
- * Always returns true.
+ * Respond to a log_id ServerMessage from the relay.
+ * Returns true on success, false on error.
  */
 static bool
-handle_log_id(char *id, struct connection_closure *closure)
+handle_log_id(const char *id, struct connection_closure *closure)
 {
     char *new_id;
     bool ret = false;
@@ -573,11 +577,18 @@ handle_log_id(char *id, struct connection_closure *closure)
     if (closure->write_ev == NULL)
 	debug_return_bool(true);
 
+    if (id[0] == '\0') {
+	sudo_warnx(U_("%s: invalid ServerMessage, missing log_id string"),
+	    closure->relay_closure->relay_name.ipaddr);
+	closure->errstr = _("invalid ServerMessage");
+	debug_return_bool(false);
+    }
+
     /* Generate a new log ID that includes the relay host. */
     len = asprintf(&new_id, "%s/%s", id,
 	closure->relay_closure->relay_name.name);
     if (len != -1) {
-	if (fmt_log_id_message(id, closure)) {
+	if (fmt_log_id_message(new_id, closure)) {
 	    if (sudo_ev_add(closure->evbase, closure->write_ev,
 		    logsrvd_conf_relay_timeout(), false) == -1) {
 		sudo_warnx("%s", U_("unable to add event to queue"));
@@ -592,11 +603,11 @@ handle_log_id(char *id, struct connection_closure *closure)
 }
 
 /*
- * Respond to a ServerError message from the relay.
- * Always returns false.
+ * Respond to an error ServerMessage from the relay.
+ * Returns true on success, false on error.
  */
 static bool
-handle_server_error(char *errmsg, struct connection_closure *closure)
+handle_server_error(const char *errmsg, struct connection_closure *closure)
 {
     struct relay_closure *relay_closure = closure->relay_closure;
     debug_decl(handle_server_error, SUDO_DEBUG_UTIL);
@@ -610,6 +621,10 @@ handle_server_error(char *errmsg, struct connection_closure *closure)
     sudo_ev_del(closure->evbase, closure->relay_closure->read_ev);
     sudo_ev_del(closure->evbase, closure->relay_closure->write_ev);
 
+    /* Missing error string. */
+    if (errmsg[0] == '\0')
+	errmsg = "unknown error";
+
     if (!schedule_error_message(errmsg, closure))
 	debug_return_bool(false);
 
@@ -617,11 +632,11 @@ handle_server_error(char *errmsg, struct connection_closure *closure)
 }
 
 /*
- * Respond to a ServerAbort message from the server.
- * Always returns false.
+ * Respond to an abort ServerMessage from the relay.
+ * Returns true on success, false on error.
  */
 static bool
-handle_server_abort(char *errmsg, struct connection_closure *closure)
+handle_server_abort(const char *errmsg, struct connection_closure *closure)
 {
     struct relay_closure *relay_closure = closure->relay_closure;
     debug_decl(handle_server_abort, SUDO_DEBUG_UTIL);
@@ -630,6 +645,10 @@ handle_server_abort(char *errmsg, struct connection_closure *closure)
 	"abort message received from relay %s (%s): %s",
 	relay_closure->relay_name.name, relay_closure->relay_name.ipaddr,
 	errmsg);
+
+    /* Missing error string. */
+    if (errmsg[0] == '\0')
+	errmsg = "unknown error";
 
     if (!schedule_error_message(errmsg, closure))
 	debug_return_bool(false);
@@ -642,7 +661,8 @@ handle_server_abort(char *errmsg, struct connection_closure *closure)
  * Returns true on success, false on error.
  */
 static bool
-handle_server_message(uint8_t *buf, size_t len, struct connection_closure *closure)
+handle_server_message(const uint8_t *buf, size_t len,
+    struct connection_closure *closure)
 {
     ServerMessage *msg;
     bool ret = false;
@@ -872,6 +892,9 @@ relay_server_msg_cb(int fd, int what, void *v)
 	    goto send_error;
 	buf->off += msg_len;
     }
+    if (buf->len != buf->off) {
+	memmove(buf->data, buf->data + buf->off, buf->len - buf->off);
+    }
     buf->len -= buf->off;
     buf->off = 0;
     debug_return;
@@ -1056,7 +1079,7 @@ start_relay(int sock, struct connection_closure *closure)
  * Relay an AcceptMessage from the client to the relay server.
  */
 static bool
-relay_accept(AcceptMessage *msg, uint8_t *buf, size_t len,
+relay_accept(const AcceptMessage *msg, const uint8_t *buf, size_t len,
     struct connection_closure *closure)
 {
     struct relay_closure *relay_closure = closure->relay_closure;
@@ -1075,7 +1098,7 @@ relay_accept(AcceptMessage *msg, uint8_t *buf, size_t len,
  * Relay a RejectMessage from the client to the relay server.
  */
 static bool
-relay_reject(RejectMessage *msg, uint8_t *buf, size_t len,
+relay_reject(const RejectMessage *msg, const uint8_t *buf, size_t len,
     struct connection_closure *closure)
 {
     struct relay_closure *relay_closure = closure->relay_closure;
@@ -1094,7 +1117,7 @@ relay_reject(RejectMessage *msg, uint8_t *buf, size_t len,
  * Relay an ExitMessage from the client to the relay server.
  */
 static bool
-relay_exit(ExitMessage *msg, uint8_t *buf, size_t len,
+relay_exit(const ExitMessage *msg, const uint8_t *buf, size_t len,
     struct connection_closure *closure)
 {
     struct relay_closure *relay_closure = closure->relay_closure;
@@ -1114,7 +1137,7 @@ relay_exit(ExitMessage *msg, uint8_t *buf, size_t len,
  * We must rebuild the packed message because the log_id is modified.
  */
 static bool
-relay_restart(RestartMessage *msg, uint8_t *buf, size_t len,
+relay_restart(const RestartMessage *msg, const uint8_t *buf, size_t len,
     struct connection_closure *closure)
 {
     struct relay_closure *relay_closure = closure->relay_closure;
@@ -1158,7 +1181,7 @@ relay_restart(RestartMessage *msg, uint8_t *buf, size_t len,
  * Relay an AlertMessage from the client to the relay server.
  */
 static bool
-relay_alert(AlertMessage *msg, uint8_t *buf, size_t len,
+relay_alert(const AlertMessage *msg, const uint8_t *buf, size_t len,
     struct connection_closure *closure)
 {
     struct relay_closure *relay_closure = closure->relay_closure;
@@ -1180,7 +1203,7 @@ relay_alert(AlertMessage *msg, uint8_t *buf, size_t len,
  * Relay a CommandSuspend from the client to the relay server.
  */
 static bool
-relay_suspend(CommandSuspend *msg, uint8_t *buf, size_t len,
+relay_suspend(const CommandSuspend *msg, const uint8_t *buf, size_t len,
     struct connection_closure *closure)
 {
     struct relay_closure *relay_closure = closure->relay_closure;
@@ -1202,7 +1225,7 @@ relay_suspend(CommandSuspend *msg, uint8_t *buf, size_t len,
  * Relay a ChangeWindowSize from the client to the relay server.
  */
 static bool
-relay_winsize(ChangeWindowSize *msg, uint8_t *buf, size_t len,
+relay_winsize(const ChangeWindowSize *msg, const uint8_t *buf, size_t len,
     struct connection_closure *closure)
 {
     struct relay_closure *relay_closure = closure->relay_closure;
@@ -1224,7 +1247,7 @@ relay_winsize(ChangeWindowSize *msg, uint8_t *buf, size_t len,
  * Relay an IoBuffer from the client to the relay server.
  */
 static bool
-relay_iobuf(int iofd, IoBuffer *iobuf, uint8_t *buf, size_t len,
+relay_iobuf(int iofd, const IoBuffer *iobuf, const uint8_t *buf, size_t len,
     struct connection_closure *closure)
 {
     struct relay_closure *relay_closure = closure->relay_closure;

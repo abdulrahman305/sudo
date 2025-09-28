@@ -1,7 +1,7 @@
 /*
  * SPDX-License-Identifier: ISC
  *
- * Copyright (c) 2019-2022 Todd C. Miller <Todd.Miller@sudo.ws>
+ * Copyright (c) 2019-2025 Todd C. Miller <Todd.Miller@sudo.ws>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -14,11 +14,6 @@
  * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
- */
-
-/*
- * This is an open source non-commercial project. Dear PVS-Studio, please check it.
- * PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
  */
 
 #include <config.h>
@@ -178,7 +173,7 @@ verify_peer_identity(int preverify_ok, X509_STORE_CTX *ctx)
     closure = SSL_get_ex_data(ssl, 1);
 
     result = validate_hostname(peer_cert, closure->server_name,
-	closure->server_ip, 0);
+	closure->server_ip);
 
     switch(result)
     {
@@ -598,8 +593,8 @@ log_server_connect(struct client_closure *closure)
     struct sudoers_string *server;
     char *host, *port, *copy = NULL;
     const char *cause = NULL;
-    int sock;
     bool tls, ret = false;
+    int sock = -1;
     debug_decl(log_server_connect, SUDOERS_DEBUG_UTIL);
 
     STAILQ_FOREACH(server, closure->log_details->log_servers, entries) {
@@ -638,8 +633,12 @@ log_server_connect(struct client_closure *closure)
     }
     free(copy);
 
-    if (!ret && cause != NULL)
-        sudo_warn("%s", cause);
+    if (!ret) {
+	if (cause != NULL)
+	    sudo_warn("%s", cause);
+	if (sock != -1)
+	    close(sock);
+    }
 
     debug_return_bool(ret);
 }
@@ -822,7 +821,7 @@ free_info_messages(InfoMessage **info_msgs, size_t n)
 }
 
 static InfoMessage **
-fmt_info_messages(struct client_closure *closure, struct eventlog *evlog,
+fmt_info_messages(struct client_closure *closure, const struct eventlog *evlog,
     size_t *n_info_msgs)
 {
     InfoMessage__StringList *runargv = NULL;
@@ -969,7 +968,7 @@ bad:
  * Returns true on success, false on failure.
  */
 bool
-fmt_accept_message(struct client_closure *closure, struct eventlog *evlog)
+fmt_accept_message(struct client_closure *closure, const struct eventlog *evlog)
 {
     ClientMessage client_msg = CLIENT_MESSAGE__INIT;
     AcceptMessage accept_msg = ACCEPT_MESSAGE__INIT;
@@ -1018,7 +1017,7 @@ done:
  * Returns true on success, false on failure.
  */
 bool
-fmt_reject_message(struct client_closure *closure, struct eventlog *evlog)
+fmt_reject_message(struct client_closure *closure, const struct eventlog *evlog)
 {
     ClientMessage client_msg = CLIENT_MESSAGE__INIT;
     RejectMessage reject_msg = REJECT_MESSAGE__INIT;
@@ -1067,7 +1066,7 @@ done:
  * Returns true on success, false on failure.
  */
 bool
-fmt_alert_message(struct client_closure *closure, struct eventlog *evlog)
+fmt_alert_message(struct client_closure *closure, const struct eventlog *evlog)
 {
     ClientMessage client_msg = CLIENT_MESSAGE__INIT;
     AlertMessage alert_msg = ALERT_MESSAGE__INIT;
@@ -1273,7 +1272,7 @@ done:
  */
 bool
 fmt_io_buf(struct client_closure *closure, int type, const char *buf,
-    unsigned int len, struct timespec *delay)
+    unsigned int len, const struct timespec *delay)
 {
     ClientMessage client_msg = CLIENT_MESSAGE__INIT;
     IoBuffer iobuf_msg = IO_BUFFER__INIT;
@@ -1311,7 +1310,7 @@ done:
  */
 bool
 fmt_winsize(struct client_closure *closure, unsigned int lines,
-    unsigned int cols, struct timespec *delay)
+    unsigned int cols, const struct timespec *delay)
 {
     ClientMessage client_msg = CLIENT_MESSAGE__INIT;
     ChangeWindowSize winsize_msg = CHANGE_WINDOW_SIZE__INIT;
@@ -1347,7 +1346,8 @@ done:
  * Returns true on success, false on failure.
  */
 bool
-fmt_suspend(struct client_closure *closure, const char *signame, struct timespec *delay)
+fmt_suspend(struct client_closure *closure, const char *signame,
+    const struct timespec *delay)
 {
     ClientMessage client_msg = CLIENT_MESSAGE__INIT;
     CommandSuspend suspend_msg = COMMAND_SUSPEND__INIT;
@@ -1487,7 +1487,7 @@ done:
  * Returns true on success, false on error.
  */
 static bool
-handle_server_hello(ServerHello *msg, struct client_closure *closure)
+handle_server_hello(const ServerHello *msg, struct client_closure *closure)
 {
     size_t n;
     debug_decl(handle_server_hello, SUDOERS_DEBUG_UTIL);
@@ -1498,7 +1498,7 @@ handle_server_hello(ServerHello *msg, struct client_closure *closure)
     }
 
     /* Check that ServerHello is valid. */
-    if (msg->server_id == NULL || msg->server_id[0] == '\0') {
+    if (msg == NULL || msg->server_id == NULL || msg->server_id[0] == '\0') {
 	sudo_warnx("%s", U_("invalid ServerHello"));
 	debug_return_bool(false);
     }
@@ -1522,17 +1522,24 @@ handle_server_hello(ServerHello *msg, struct client_closure *closure)
 }
 
 /*
- * Respond to a CommitPoint message from the server.
+ * Respond to a commit_point ServerMessage from the server.
  * Returns true on success, false on error.
  */
 static bool
-handle_commit_point(TimeSpec *commit_point, struct client_closure *closure)
+handle_commit_point(const TimeSpec *commit_point,
+    struct client_closure *closure)
 {
     debug_decl(handle_commit_point, SUDOERS_DEBUG_UTIL);
 
     /* Only valid after we have sent an IO buffer. */
     if (closure->state < SEND_IO) {
 	sudo_warnx(U_("%s: unexpected state %d"), __func__, closure->state);
+	debug_return_bool(false);
+    }
+
+    /* Check that ServerMessage's commit_point is valid. */
+    if (commit_point == NULL) {
+	sudo_warnx(U_("invalid ServerMessage"));
 	debug_return_bool(false);
     }
 
@@ -1560,12 +1567,18 @@ handle_commit_point(TimeSpec *commit_point, struct client_closure *closure)
  * Always returns true.
  */
 static bool
-handle_log_id(char *id, struct client_closure *closure)
+handle_log_id(const char *id, struct client_closure *closure)
 {
     debug_decl(handle_log_id, SUDOERS_DEBUG_UTIL);
 
     sudo_debug_printf(SUDO_DEBUG_INFO, "%s: remote log ID: %s", __func__, id);
-    if (closure->iolog_id != NULL) {
+
+    if (id[0] == '\0') {
+	sudo_warnx(U_("invalid ServerMessage"));
+	debug_return_bool(false);
+    }
+
+    if (closure->iolog_id == NULL) {
 	if ((closure->iolog_id = strdup(id)) == NULL)
 	    sudo_fatal(U_("%s: %s"), __func__, U_("unable to allocate memory"));
     }
@@ -1577,7 +1590,7 @@ handle_log_id(char *id, struct client_closure *closure)
  * Always returns false.
  */
 static bool
-handle_server_error(char *errmsg, struct client_closure *closure)
+handle_server_error(const char *errmsg, struct client_closure *closure)
 {
     debug_decl(handle_server_error, SUDOERS_DEBUG_UTIL);
 
@@ -1590,7 +1603,7 @@ handle_server_error(char *errmsg, struct client_closure *closure)
  * Always returns false.
  */
 static bool
-handle_server_abort(char *errmsg, struct client_closure *closure)
+handle_server_abort(const char *errmsg, struct client_closure *closure)
 {
     debug_decl(handle_server_abort, SUDOERS_DEBUG_UTIL);
 
@@ -1603,7 +1616,7 @@ handle_server_abort(char *errmsg, struct client_closure *closure)
  * Returns true on success, false on error.
  */
 static bool
-handle_server_message(uint8_t *buf, size_t len,
+handle_server_message(const uint8_t *buf, size_t len,
     struct client_closure *closure)
 {
     ServerMessage *msg;
@@ -1666,21 +1679,23 @@ expand_buf(struct connection_buffer *buf, size_t needed)
     if (buf->size < needed) {
 	/* Expand buffer. */
 	const size_t newsize = sudo_pow2_roundup(needed);
+	sudo_debug_printf(SUDO_DEBUG_INFO|SUDO_DEBUG_LINENO,
+	    "expanding buffer from %zu to %zu", buf->size, newsize);
 	if (newsize < needed) {
 	    /* overflow */
 	    errno = ENOMEM;
 	    goto oom;
 	}
-	if ((newdata = malloc(needed)) == NULL)
+	if ((newdata = malloc(newsize)) == NULL)
 	    goto oom;
-	if (buf->off > 0)
+	if (buf->len != buf->off)
 	    memcpy(newdata, buf->data + buf->off, buf->len - buf->off);
 	free(buf->data);
 	buf->data = newdata;
 	buf->size = newsize;
     } else {
 	/* Just reset existing buffer. */
-	if (buf->off > 0) {
+	if (buf->len != buf->off) {
 	    memmove(buf->data, buf->data + buf->off,
 		buf->len - buf->off);
 	}
@@ -1837,6 +1852,9 @@ server_msg_cb(int fd, int what, void *v)
 	    goto bad;
 	buf->off += msg_len;
     }
+    if (buf->len != buf->off) {
+	memmove(buf->data, buf->data + buf->off, buf->len - buf->off);
+    }
     buf->len -= buf->off;
     buf->off = 0;
     debug_return;
@@ -1965,7 +1983,7 @@ bad:
     if (closure->log_details->ignore_log_errors) {
 	/* Disable plugin, the command continues. */
 	closure->disabled = true;
-	closure->write_ev->del(closure->read_ev);
+	closure->read_ev->del(closure->read_ev);
 	closure->write_ev->del(closure->write_ev);
     } else {
 	/* Break out of sudo event loop and kill the command. */

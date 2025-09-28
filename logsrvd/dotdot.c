@@ -1,7 +1,7 @@
 /*
  * SPDX-License-Identifier: ISC
  *
- * Copyright (c) 2020 Todd C. Miller <Todd.Miller@sudo.ws>
+ * Copyright (c) 2025 Todd C. Miller <Todd.Miller@sudo.ws>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -18,26 +18,34 @@
 
 #include <config.h>
 
-#include <errno.h>
-#include <unistd.h>
+#ifdef HAVE_STDBOOL_H
+# include <stdbool.h>
+#else
+# include <compat/stdbool.h>
+#endif /* HAVE_STDBOOL_H */
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include <sudo_compat.h>
+#include <sudo_debug.h>
+#include <logsrv_util.h>
 
-#if !defined(HAVE_PREAD) && !defined(HAVE_PREAD64)
-ssize_t
-sudo_pread(int fd, void *buf, size_t nbytes, off_t offset)
+bool
+contains_dot_dot(const char *str)
 {
-    ssize_t nread;
-    off_t old_offset;
+    const char *cp;
+    debug_decl(contains_dot_dot, SUDO_DEBUG_UTIL);
 
-    old_offset = lseek(fd, (off_t)0, SEEK_CUR);
-    if (old_offset == -1 || lseek(fd, offset, SEEK_SET) == -1)
-	return -1;
+    for (cp = str; *cp != '\0'; cp++) {
+	/* Match ".." */
+	if (cp[0] != '.' || cp[1] != '.')
+	    continue;
 
-    nread = read(fd, buf, nbytes);
-    if (lseek(fd, old_offset, SEEK_SET) == -1)
-	return -1;
+	/* Match "^.." or "/.." then "../" or "..$" */
+	if ((cp == str || cp[-1] == '/') && (cp[2] == '/' || cp[2] == '\0'))
+	    debug_return_bool(true);
+    }
 
-    return nread;
+    debug_return_bool(false);
 }
-#endif /* !HAVE_PREAD && !HAVE_PREAD64 */

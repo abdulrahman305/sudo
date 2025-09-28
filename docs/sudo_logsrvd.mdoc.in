@@ -1,7 +1,7 @@
 .\"
 .\" SPDX-License-Identifier: ISC
 .\"
-.\" Copyright (c) 2019-2024 Todd C. Miller <Todd.Miller@sudo.ws>
+.\" Copyright (c) 2019-2025 Todd C. Miller <Todd.Miller@sudo.ws>
 .\"
 .\" Permission to use, copy, modify, and distribute this software for any
 .\" purpose with or without fee is hereby granted, provided that the above
@@ -15,7 +15,7 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .\"
-.Dd July 14, 2024
+.Dd September 21, 2025
 .Dt SUDO_LOGSRVD @mansectsu@
 .Os Sudo @PACKAGE_VERSION@
 .Sh NAME
@@ -164,7 +164,7 @@ for this purpose.
 # cd /etc/ssl/sudo
 # mkdir certs csr newcerts private
 # chmod 700 private
-# touch index.txt
+# touch index.txt index.txt.attr
 # echo 1000 > serial
 .Ed
 .Pp
@@ -199,8 +199,25 @@ default_ca              = CA_default
 dir                     = /etc/ssl/sudo
 certs                   = $dir/certs
 database                = $dir/index.txt
+private_key             = $dir/private/cakey.pem
 certificate             = $dir/cacert.pem
+new_certs_dir           = $dir/newcerts
 serial                  = $dir/serial
+
+# Copy extension from the csr to the cert
+copy_extensions         = copy
+
+# CA policy if you don't have one defined already.
+policy			= policy_loose
+
+[ policy_loose ]
+# See POLICY FORMAT section in the "openssl-ca" manual.
+countryName             = optional
+stateOrProvinceName     = optional
+organizationName        = optional
+organizationalUnitName  = optional
+commonName              = supplied
+emailAddress            = optional
 
 [ v3_ca ]
 subjectKeyIdentifier    = hash
@@ -312,6 +329,18 @@ to be sent with your certificate request
 A challenge password []:
 An optional company name []:
 .Ed
+.Pp
+To add additional DNS names (or IP addresses) to the request, set
+the Subject Alternative Name (SAN) by adding the something like
+the following to the above command.
+.Bd -literal -offset 4n
+-addext 'subjectAltName = DNS:other.example.com, IP:192.168.10.10'
+.Ed
+.Pp
+You may include zero or more DNS and IP entries, separated by a comma.
+This will only work if
+.Li copy_extensions
+has been enabled in the CA configuration.
 .Pp
 Now sign the CSR that was just created:
 .Bd -literal -offset 4n

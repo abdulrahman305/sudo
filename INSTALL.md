@@ -222,10 +222,11 @@ Defaults are listed in brackets after the description.
 
     --disable-hardening
         Disable the use of compiler/linker exploit mitigation options
-        which are enabled by default.  This includes compiling with
-        _FORTIFY_SOURCE defined to 2, building with -fstack-protector,
-        -fstack-clash-protection, -fcf-protection and linking with
-        -zrelro, -znow, and -znoexecstack where supported.
+        which are enabled by default.  Sudo uses hardening options
+        from https://best.openssf.org/Compiler-Hardening-Guides
+        where supported.  When building a sudo package on a system
+        with its own hardening defaults, you may wish to disable
+        sudo's options in favor of the native ones.
 
     --disable-largefile
         Disable support for large (64-bit) files on 32-bit systems
@@ -578,11 +579,6 @@ Defaults are listed in brackets after the description.
         code and/or `configure` changes.  On systems with PAM support
         (such as HP-UX 11.0 and higher, Solaris, FreeBSD, and Linux), the
         DCE PAM module (usually libpam_dce) should be used instead.
-
-    --with-fwtk[=DIR]
-        Enable TIS Firewall Toolkit (FWTK) "authsrv" support. If specified,
-        DIR is the base directory containing the compiled FWTK package
-        (or at least the library and header files).
 
     --with-kerb5[=DIR]
         Enable Kerberos V support.  If specified, DIR is the base

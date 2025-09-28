@@ -1,7 +1,7 @@
 /*
  * SPDX-License-Identifier: ISC
  *
- * Copyright (c) 2019-2023 Todd C. Miller <Todd.Miller@sudo.ws>
+ * Copyright (c) 2019-2023, 2025 Todd C. Miller <Todd.Miller@sudo.ws>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -14,11 +14,6 @@
  * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
- */
-
-/*
- * This is an open source non-commercial project. Dear PVS-Studio, please check it.
- * PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
  */
 
 #include <config.h>
@@ -558,10 +553,10 @@ static InfoMessage **
 fmt_info_messages(const struct eventlog *evlog, char *hostname,
     size_t *n_info_msgs)
 {
-    InfoMessage **info_msgs = NULL;
     InfoMessage__StringList *runargv = NULL;
     InfoMessage__StringList *runenv = NULL;
     InfoMessage__StringList *submitenv = NULL;
+    InfoMessage **info_msgs = NULL;
     size_t info_msgs_size, n = 0;
     debug_decl(fmt_info_messages, SUDO_DEBUG_UTIL);
 
@@ -606,7 +601,10 @@ fmt_info_messages(const struct eventlog *evlog, char *hostname,
     n++; \
 } while (0)
 
-    /* Fill in info_msgs */
+    /*
+     * Fill in info_msgs.  For legacy I/O log files, only command, runargv,
+     * runuser, submitcwd, submithost, submituser, ttyname may be present.
+     */
     n = 0;
     fill_num("columns", evlog->columns);
     fill_str("command", evlog->command);
@@ -631,7 +629,9 @@ fmt_info_messages(const struct eventlog *evlog, char *hostname,
 	fill_num("runuid", evlog->runuid);
     }
     fill_str("runuser", evlog->runuser);
-    fill_str("source", evlog->source);
+    if (evlog->source != NULL) {
+	fill_str("source", evlog->source);
+    }
     fill_str("submitcwd", evlog->cwd);
     fill_str("submithost", hostname);
     fill_str("submituser", evlog->submituser);
@@ -676,7 +676,7 @@ fmt_reject_message(struct client_closure *closure)
 {
     ClientMessage client_msg = CLIENT_MESSAGE__INIT;
     RejectMessage reject_msg = REJECT_MESSAGE__INIT;
-    TimeSpec tv = TIME_SPEC__INIT;
+    TimeSpec ts = TIME_SPEC__INIT;
     size_t n_info_msgs;
     bool ret = false;
     char *hostname;
@@ -691,9 +691,9 @@ fmt_reject_message(struct client_closure *closure)
     }
 
     /* Sudo I/O logs only store start time in seconds. */
-    tv.tv_sec = (int64_t)closure->evlog->event_time.tv_sec;
-    tv.tv_nsec = (int32_t)closure->evlog->event_time.tv_nsec;
-    reject_msg.submit_time = &tv;
+    ts.tv_sec = (int64_t)closure->evlog->event_time.tv_sec;
+    ts.tv_nsec = (int32_t)closure->evlog->event_time.tv_nsec;
+    reject_msg.submit_time = &ts;
 
     /* Why the command was rejected. */
     reject_msg.reason = closure->reject_reason;
@@ -735,8 +735,7 @@ fmt_accept_message(struct client_closure *closure)
 {
     ClientMessage client_msg = CLIENT_MESSAGE__INIT;
     AcceptMessage accept_msg = ACCEPT_MESSAGE__INIT;
-    TimeSpec tv = TIME_SPEC__INIT;
-    size_t n_info_msgs;
+    TimeSpec ts = TIME_SPEC__INIT;
     bool ret = false;
     char *hostname;
     debug_decl(fmt_accept_message, SUDO_DEBUG_UTIL);
@@ -748,25 +747,21 @@ fmt_accept_message(struct client_closure *closure)
 	sudo_warn("gethostname");
 	debug_return_bool(false);
     }
-
-    /* Sudo I/O logs only store start time in seconds. */
-    tv.tv_sec = (int64_t)closure->evlog->event_time.tv_sec;
-    tv.tv_nsec = (int32_t)closure->evlog->event_time.tv_nsec;
-    accept_msg.submit_time = &tv;
+    ts.tv_sec = (int64_t)closure->evlog->event_time.tv_sec;
+    ts.tv_nsec = (int32_t)closure->evlog->event_time.tv_nsec;
+    accept_msg.submit_time = &ts;
 
     /* Client will send IoBuffer messages. */
     accept_msg.expect_iobufs = !closure->accept_only;
 
     accept_msg.info_msgs = fmt_info_messages(closure->evlog, hostname,
-        &n_info_msgs);
+        &accept_msg.n_info_msgs);
     if (accept_msg.info_msgs == NULL)
 	goto done;
 
-    /* Update n_info_msgs. */
-    accept_msg.n_info_msgs = n_info_msgs;
-
     sudo_debug_printf(SUDO_DEBUG_INFO,
-	"%s: sending AcceptMessage, array length %zu", __func__, n_info_msgs);
+	"%s: sending AcceptMessage, array length %zu", __func__,
+	accept_msg.n_info_msgs);
 
     /* Schedule ClientMessage */
     client_msg.u.accept_msg = &accept_msg;
@@ -778,7 +773,7 @@ fmt_accept_message(struct client_closure *closure)
     }
 
 done:
-    free_info_messages(accept_msg.info_msgs, n_info_msgs);
+    free_info_messages(accept_msg.info_msgs, accept_msg.n_info_msgs);
     free(hostname);
 
     debug_return_bool(ret);
@@ -794,7 +789,7 @@ fmt_restart_message(struct client_closure *closure)
 {
     ClientMessage client_msg = CLIENT_MESSAGE__INIT;
     RestartMessage restart_msg = RESTART_MESSAGE__INIT;
-    TimeSpec tv = TIME_SPEC__INIT;
+    TimeSpec ts = TIME_SPEC__INIT;
     bool ret = false;
     debug_decl(fmt_restart_message, SUDO_DEBUG_UTIL);
 
@@ -802,9 +797,9 @@ fmt_restart_message(struct client_closure *closure)
 	"%s: sending RestartMessage, [%lld, %ld]", __func__,
 	(long long)closure->restart.tv_sec, closure->restart.tv_nsec);
 
-    tv.tv_sec = (int64_t)closure->restart.tv_sec;
-    tv.tv_nsec = (int32_t)closure->restart.tv_nsec;
-    restart_msg.resume_point = &tv;
+    ts.tv_sec = (int64_t)closure->restart.tv_sec;
+    ts.tv_nsec = (int32_t)closure->restart.tv_nsec;
+    restart_msg.resume_point = &ts;
     restart_msg.log_id = (char *)closure->iolog_id;
 
     /* Schedule ClientMessage */
@@ -1121,7 +1116,7 @@ client_message_completion(struct client_closure *closure)
  * Returns true on success, false on error.
  */
 static bool
-handle_server_hello(ServerHello *msg, struct client_closure *closure)
+handle_server_hello(const ServerHello *msg, struct client_closure *closure)
 {
     size_t n;
     debug_decl(handle_server_hello, SUDO_DEBUG_UTIL);
@@ -1132,7 +1127,7 @@ handle_server_hello(ServerHello *msg, struct client_closure *closure)
     }
 
     /* Check that ServerHello is valid. */
-    if (msg->server_id == NULL || msg->server_id[0] == '\0') {
+    if (msg == NULL || msg->server_id == NULL || msg->server_id[0] == '\0') {
 	sudo_warnx("%s", U_("invalid ServerHello"));
 	debug_return_bool(false);
     }
@@ -1151,17 +1146,25 @@ handle_server_hello(ServerHello *msg, struct client_closure *closure)
 }
 
 /*
- * Respond to a CommitPoint message from the server.
+ * Respond to a commit_point ServerMessage from the server.
  * Returns true on success, false on error.
  */
 static bool
-handle_commit_point(TimeSpec *commit_point, struct client_closure *closure)
+handle_commit_point(const TimeSpec *commit_point,
+    struct client_closure *closure)
 {
     debug_decl(handle_commit_point, SUDO_DEBUG_UTIL);
 
     /* Only valid after we have sent an IO buffer. */
     if (closure->state < SEND_IO) {
 	sudo_warnx(U_("%s: unexpected state %d"), __func__, closure->state);
+	debug_return_bool(false);
+    }
+
+    /* Check that ServerMessage's commit_point is valid. */
+    if (commit_point == NULL) {
+	sudo_warnx(U_("%s: invalid ServerMessage, missing commit_point"),
+	    server_info.name);
 	debug_return_bool(false);
     }
 
@@ -1174,11 +1177,11 @@ handle_commit_point(TimeSpec *commit_point, struct client_closure *closure)
 }
 
 /*
- * Respond to a LogId message from the server.
+ * Respond to a log_id ServerMessage from the relay.
  * Always returns true.
  */
 static bool
-handle_log_id(char *id, struct client_closure *closure)
+handle_log_id(const char *id, struct client_closure *closure)
 {
     debug_decl(handle_log_id, SUDO_DEBUG_UTIL);
 
@@ -1193,7 +1196,7 @@ handle_log_id(char *id, struct client_closure *closure)
  * Always returns false.
  */
 static bool
-handle_server_error(char *errmsg, struct client_closure *closure)
+handle_server_error(const char *errmsg, struct client_closure *closure)
 {
     debug_decl(handle_server_error, SUDO_DEBUG_UTIL);
 
@@ -1206,7 +1209,7 @@ handle_server_error(char *errmsg, struct client_closure *closure)
  * Always returns false.
  */
 static bool
-handle_server_abort(char *errmsg, struct client_closure *closure)
+handle_server_abort(const char *errmsg, struct client_closure *closure)
 {
     debug_decl(handle_server_abort, SUDO_DEBUG_UTIL);
 
@@ -1219,7 +1222,7 @@ handle_server_abort(char *errmsg, struct client_closure *closure)
  * Returns true on success, false on error.
  */
 static bool
-handle_server_message(uint8_t *buf, size_t len,
+handle_server_message(const uint8_t *buf, size_t len,
     struct client_closure *closure)
 {
     ServerMessage *msg;
@@ -1419,6 +1422,9 @@ server_msg_cb(int fd, int what, void *v)
 	if (!handle_server_message(buf->data + buf->off, msg_len, closure))
 	    goto bad;
 	buf->off += msg_len;
+    }
+    if (buf->len != buf->off) {
+	memmove(buf->data, buf->data + buf->off, buf->len - buf->off);
     }
     buf->len -= buf->off;
     buf->off = 0;
@@ -1884,7 +1890,7 @@ main(int argc, char *argv[])
 #if defined(HAVE_OPENSSL)
 	if (cert != NULL) {
 	    if (!tls_client_setup(closure->sock, ca_bundle, cert, key, NULL,
-		    NULL, NULL, verify_server, false, &closure->tls_client))
+		    NULL, NULL, true, verify_server, &closure->tls_client))
 		goto bad;
 	} else
 #endif

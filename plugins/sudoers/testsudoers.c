@@ -21,11 +21,6 @@
  * Materiel Command, USAF, under agreement number F39502-99-1-0512.
  */
 
-/*
- * This is an open source non-commercial project. Dear PVS-Studio, please check it.
- * PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
- */
-
 #include <config.h>
 
 #include <sys/types.h>
@@ -173,7 +168,7 @@ main(int argc, char *argv[])
 	    case 'l':
 		if (test_ctx.mode != MODE_RUN) {
 		    sudo_warnx(
-			"only one of the -l or -v flags may be specified");
+			"only one of the -l, -L or -v flags may be specified");
 		    usage();
 		}
 		test_ctx.mode = MODE_LIST;
@@ -213,7 +208,7 @@ main(int argc, char *argv[])
 	    case 'v':
 		if (test_ctx.mode != MODE_RUN) {
 		    sudo_warnx(
-			"only one of the -l or -v flags may be specified");
+			"only one of the -l, -L or -v flags may be specified");
 		    usage();
 		}
 		test_ctx.mode = MODE_VALIDATE;

@@ -16,11 +16,6 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-/*
- * This is an open source non-commercial project. Dear PVS-Studio, please check it.
- * PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
- */
-
 #include <config.h>
 
 #include <sys/stat.h>
@@ -227,7 +222,7 @@ journal_finish(struct connection_closure *closure)
  * Returns true if we reached the target time exactly, else false.
  */
 static bool
-journal_seek(struct timespec *target, struct connection_closure *closure)
+journal_seek(const struct timespec *target, struct connection_closure *closure)
 {
     ClientMessage *msg = NULL;
     size_t nread, bufsize = 0;
@@ -407,7 +402,7 @@ journal_seek(struct timespec *target, struct connection_closure *closure)
  * Returns true if we reached the target time exactly, else false.
  */
 static bool
-journal_restart(RestartMessage *msg, uint8_t *buf, size_t buflen,
+journal_restart(const RestartMessage *msg, const uint8_t *buf, size_t buflen,
     struct connection_closure *closure)
 {
     struct timespec target;
@@ -427,13 +422,19 @@ journal_restart(RestartMessage *msg, uint8_t *buf, size_t buflen,
     if (len >= ssizeof(journal_path)) {
 	errno = ENAMETOOLONG;
 	sudo_warn("%s/incoming/%s", logsrvd_conf_relay_dir(), cp);
-	closure->errstr = _("unable to create journal file");
+	closure->errstr = _("unable to open journal file");
 	debug_return_bool(false);
     }
     if ((fd = open(journal_path, O_RDWR)) == -1) {
 	sudo_warn(U_("unable to open %s"), journal_path);
-	closure->errstr = _("unable to create journal file");
-        debug_return_bool(false);
+	closure->errstr = _("unable to open journal file");
+	debug_return_bool(false);
+    }
+    if (!sudo_lock_file(fd, SUDO_TLOCK)) {
+	sudo_warn(U_("unable to lock %s"), journal_path);
+	close(fd);
+	closure->errstr = _("unable to lock journal file");
+	debug_return_bool(false);
     }
     if (!journal_fdopen(fd, journal_path, closure)) {
 	sudo_warnx(U_("%s: %s"), __func__, U_("unable to allocate memory"));
@@ -455,7 +456,8 @@ journal_restart(RestartMessage *msg, uint8_t *buf, size_t buflen,
 }
 
 static bool
-journal_write(uint8_t * restrict buf, size_t len, struct connection_closure * restrict closure)
+journal_write(const uint8_t * restrict buf, size_t len,
+    struct connection_closure * restrict closure)
 {
     uint32_t msg_len;
     debug_decl(journal_write, SUDO_DEBUG_UTIL);
@@ -478,7 +480,7 @@ journal_write(uint8_t * restrict buf, size_t len, struct connection_closure * re
  * Store an AcceptMessage from the client in the journal.
  */
 static bool
-journal_accept(AcceptMessage *msg, uint8_t *buf, size_t len,
+journal_accept(const AcceptMessage *msg, const uint8_t *buf, size_t len,
     struct connection_closure *closure)
 {
     debug_decl(journal_accept, SUDO_DEBUG_UTIL);
@@ -512,8 +514,8 @@ journal_accept(AcceptMessage *msg, uint8_t *buf, size_t len,
  * Store a RejectMessage from the client in the journal.
  */
 static bool
-journal_reject(RejectMessage *msg, uint8_t * restrict buf, size_t len,
-    struct connection_closure * restrict closure)
+journal_reject(const RejectMessage *msg, const uint8_t * restrict buf,
+    size_t len, struct connection_closure * restrict closure)
 {
     debug_decl(journal_reject, SUDO_DEBUG_UTIL);
 
@@ -532,7 +534,7 @@ journal_reject(RejectMessage *msg, uint8_t * restrict buf, size_t len,
  * Store an ExitMessage from the client in the journal.
  */
 static bool
-journal_exit(ExitMessage *msg, uint8_t * restrict buf, size_t len,
+journal_exit(const ExitMessage *msg, const uint8_t * restrict buf, size_t len,
     struct connection_closure * restrict closure)
 {
     debug_decl(journal_exit, SUDO_DEBUG_UTIL);
@@ -550,7 +552,7 @@ journal_exit(ExitMessage *msg, uint8_t * restrict buf, size_t len,
  * Store an AlertMessage from the client in the journal.
  */
 static bool
-journal_alert(AlertMessage *msg, uint8_t * restrict buf, size_t len,
+journal_alert(const AlertMessage *msg, const uint8_t * restrict buf, size_t len,
     struct connection_closure * restrict closure)
 {
     debug_decl(journal_alert, SUDO_DEBUG_UTIL);
@@ -570,8 +572,8 @@ journal_alert(AlertMessage *msg, uint8_t * restrict buf, size_t len,
  * Store an IoBuffer from the client in the journal.
  */
 static bool
-journal_iobuf(int iofd, IoBuffer *iobuf, uint8_t * restrict buf, size_t len,
-    struct connection_closure * restrict closure)
+journal_iobuf(int iofd, const IoBuffer *iobuf, const uint8_t * restrict buf,
+    size_t len, struct connection_closure * restrict closure)
 {
     debug_decl(journal_iobuf, SUDO_DEBUG_UTIL);
 
@@ -586,8 +588,8 @@ journal_iobuf(int iofd, IoBuffer *iobuf, uint8_t * restrict buf, size_t len,
  * Store a CommandSuspend message from the client in the journal.
  */
 static bool
-journal_suspend(CommandSuspend *msg, uint8_t * restrict buf, size_t len,
-    struct connection_closure * restrict closure)
+journal_suspend(const CommandSuspend *msg, const uint8_t * restrict buf,
+    size_t len, struct connection_closure * restrict closure)
 {
     debug_decl(journal_suspend, SUDO_DEBUG_UTIL);
 
@@ -600,8 +602,8 @@ journal_suspend(CommandSuspend *msg, uint8_t * restrict buf, size_t len,
  * Store a ChangeWindowSize message from the client in the journal.
  */
 static bool
-journal_winsize(ChangeWindowSize *msg, uint8_t * restrict buf, size_t len,
-    struct connection_closure * restrict closure)
+journal_winsize(const ChangeWindowSize *msg, const uint8_t * restrict buf,
+    size_t len, struct connection_closure * restrict closure)
 {
     debug_decl(journal_winsize, SUDO_DEBUG_UTIL);
 
