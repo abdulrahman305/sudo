@@ -79,7 +79,7 @@ SPLINT_OPTS = -D__restrict= -checks
 
 # PVS-studio options
 PVS_CFG = $(top_srcdir)/PVS-Studio.cfg
-PVS_IGNORE = 'V707,V011,V002,V536'
+PVS_IGNORE = 'V707,V011,V002,V536,V795'
 PVS_LOG_OPTS = -a 'GA:1,2' -e -t errorfile -d $(PVS_IGNORE)
 
 # Where to install things...
@@ -134,7 +134,7 @@ Makefile: $(srcdir)/Makefile.in
 	$(CPP) $(CPPFLAGS) $< > $@
 
 .i.plog:
-	ifile=$<; rm -f $@; pvs-studio --cfg $(PVS_CFG) --sourcetree-root $(top_srcdir) --skip-cl-exe yes --source-file $${ifile%i}c --i-file $< --output-file $@
+	ifile=$<; rm -f $@; pvs-studio --cfg $(PVS_CFG) --source-file $${ifile%i}c --i-file $< --output-file $@
 
 $(shlib_map): $(shlib_exp)
 	@$(AWK) 'BEGIN { print "{\n\tglobal:" } { print "\t\t"$$0";" } END { print "\tlocal:\n\t\t*;\n};" }' $(shlib_exp) > $@
@@ -219,4 +219,4 @@ sample_plugin.i: $(srcdir)/sample_plugin.c $(incdir)/compat/stdbool.h \
                   $(top_builddir)/pathnames.h
 	$(CPP) $(CPPFLAGS) $(srcdir)/sample_plugin.c > $@
 sample_plugin.plog: sample_plugin.i
-	rm -f $@; pvs-studio --cfg $(PVS_CFG) --sourcetree-root $(top_srcdir) --skip-cl-exe yes --source-file $(srcdir)/sample_plugin.c --i-file sample_plugin.i --output-file $@
+	rm -f $@; pvs-studio --cfg $(PVS_CFG) --source-file $(srcdir)/sample_plugin.c --i-file sample_plugin.i --output-file $@
