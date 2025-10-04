@@ -587,7 +587,7 @@ connect_server(const char *host, const char *port, bool tls,
  * Stores socket in closure with O_NONBLOCK and close-on-exec flags set.
  * Returns true on success, else false.
  */
-bool
+static bool
 log_server_connect(struct client_closure *closure)
 {
     struct sudoers_string *server;
@@ -736,7 +736,7 @@ get_free_buf(struct client_closure *closure)
  * Appends the wire format message to the closure's write queue.
  * Returns true on success, false on failure.
  */
-bool
+static bool
 fmt_client_message(struct client_closure *closure, ClientMessage *msg)
 {
     struct connection_buffer *buf;
@@ -1184,7 +1184,7 @@ fmt_initial_message(struct client_closure *closure)
  * Appends the wire format message to the closure's write queue.
  * Returns true on success, false on failure.
  */
-bool
+static bool
 fmt_restart_message(struct client_closure *closure)
 {
     ClientMessage client_msg = CLIENT_MESSAGE__INIT;
@@ -1216,7 +1216,7 @@ fmt_restart_message(struct client_closure *closure)
  * Appends the wire format message to the closure's write queue.
  * Returns true on success, false on failure.
  */
-bool
+static bool
 fmt_exit_message(struct client_closure *closure, int exit_status, int error)
 {
     ClientMessage client_msg = CLIENT_MESSAGE__INIT;
@@ -1460,7 +1460,7 @@ client_message_completion(struct client_closure *closure)
  * We do this synchronously, since we don't want the command to run
  * before the log server connection is completely established.
  */
-bool
+static bool
 read_server_hello(struct client_closure *closure)
 {
     struct sudo_event_base *evbase = NULL;
@@ -1884,12 +1884,12 @@ server_msg_cb(int fd, int what, void *v)
     debug_return;
 bad:
     /* Disable further log server operations. */
+    client_closure_free_contents(closure);
     closure->disabled = true;
     if (!closure->log_details->ignore_log_errors) {
 	/* Break out of sudo event loop and kill the command. */
 	closure->read_ev->loopbreak(closure->read_ev);
     }
-    client_closure_free_contents(closure);
     debug_return;
 }
 
@@ -2004,12 +2004,12 @@ client_msg_cb(int fd, int what, void *v)
 
 bad:
     /* Disable further log server operations. */
+    client_closure_free_contents(closure);
     closure->disabled = true;
     if (!closure->log_details->ignore_log_errors) {
 	/* Break out of sudo event loop and kill the command. */
 	closure->read_ev->loopbreak(closure->read_ev);
     }
-    client_closure_free_contents(closure);
     debug_return;
 }
 
