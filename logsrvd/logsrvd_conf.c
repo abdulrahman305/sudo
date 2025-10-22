@@ -153,6 +153,7 @@ static struct logsrvd_config {
 	gid_t gid;
 	mode_t mode;
 	unsigned int maxseq;
+	char *iolog_base;
 	char *iolog_dir;
 	char *iolog_file;
 	void *passprompt_regex;
@@ -203,6 +204,12 @@ mode_t
 logsrvd_conf_iolog_mode(void)
 {
     return logsrvd_config->iolog.mode;
+}
+
+const char *
+logsrvd_conf_iolog_base(void)
+{
+    return logsrvd_config->iolog.iolog_base;
 }
 
 const char *
@@ -345,14 +352,37 @@ logsrvd_conf_relay_tls_check_peer(void)
 static bool
 cb_iolog_dir(struct logsrvd_config *config, const char *path, size_t offset)
 {
+    size_t base_len = 0;
     debug_decl(cb_iolog_dir, SUDO_DEBUG_UTIL);
 
     free(config->iolog.iolog_dir);
-    if ((config->iolog.iolog_dir = strdup(path)) == NULL) {
-	sudo_warnx(U_("%s: %s"), __func__, U_("unable to allocate memory"));
-	debug_return_bool(false);
+    if ((config->iolog.iolog_dir = strdup(path)) == NULL)
+	goto oom;
+
+    /*
+     * iolog_base is the portion of iolog_dir that contains no escapes.
+     * This is used to create a relative path for the log id.
+     */
+    free(config->iolog.iolog_base);
+    for (;;) {
+	base_len += strcspn(path + base_len, "%");
+	if (path[base_len] == '\0')
+	    break;
+	if (path[base_len + 1] == '{') {
+	    /* We want the base to end on a directory boundary. */
+	    while (base_len > 0 && path[base_len] != '/')
+		base_len--;
+	    break;
+	}
+	base_len++;
     }
+    if ((config->iolog.iolog_base = strndup(path, base_len)) == NULL)
+	goto oom;
+
     debug_return_bool(true);
+oom:
+    sudo_warnx(U_("%s: %s"), __func__, U_("unable to allocate memory"));
+    debug_return_bool(false);
 }
 
 static bool
@@ -1393,9 +1423,9 @@ static int
 logsrvd_conv_syslog(int num_msgs, const struct sudo_conv_message msgs[],
     struct sudo_conv_reply replies[], struct sudo_conv_callback *callback)
 {
-    char *buf = NULL, *cp = NULL;
     const char *progname;
-    size_t proglen, bufsize = 0;
+    char buf[4096], *cp, *ep;
+    size_t proglen;
     int i;
     debug_decl(logsrvd_conv_syslog, SUDO_DEBUG_UTIL);
 
@@ -1413,10 +1443,11 @@ logsrvd_conv_syslog(int num_msgs, const struct sudo_conv_message msgs[],
      */
     progname = getprogname();
     proglen = strlen(progname);
-    for (i = 0; i < num_msgs; i++) {
+    cp = buf;
+    ep = buf + sizeof(buf);
+    for (i = 0; i < num_msgs && ep - cp > 1; i++) {
 	const char *msg = msgs[i].msg;
 	size_t len = strlen(msg);
-	size_t used = (size_t)(cp - buf);
 
 	/* Strip leading "sudo_logsrvd: " prefix. */
 	if (strncmp(msg, progname, proglen) == 0) {
@@ -1441,25 +1472,17 @@ logsrvd_conv_syslog(int num_msgs, const struct sudo_conv_message msgs[],
 	if (len == 0)
 	    continue;
 
-	if (len >= bufsize - used) {
-	    bufsize += 1024;
-	    char *tmp = realloc(buf, bufsize);
-	    if (tmp == NULL) {
-		sudo_warnx(U_("%s: %s"), __func__, U_("unable to allocate memory"));
-		free(buf);
-		debug_return_int(-1);
-	    }
-	    buf = tmp;
-	    cp = tmp + used;
+	if (len >= (size_t)(ep - cp)) {
+	    /* Message too long, truncate. */
+	    len = (size_t)(ep - cp) - 1;
 	}
 	memcpy(cp, msg, len);
 	cp[len] = '\0';
 	cp += len;
     }
-    if (buf != NULL) {
+    if (cp != buf) {
 	openlog(progname, 0, logsrvd_config->syslog.server_facility);
 	syslog(LOG_ERR, "%s", buf);
-	free(buf);
 
 	/* Restore old syslog settings. */
 	if (logsrvd_config->eventlog.log_type == EVLOG_SYSLOG)
@@ -1569,6 +1592,7 @@ logsrvd_conf_free(struct logsrvd_config *config)
 #endif
 
     /* struct logsrvd_config_iolog */
+    free(config->iolog.iolog_base);
     free(config->iolog.iolog_dir);
     free(config->iolog.iolog_file);
     iolog_pwfilt_free(config->iolog.passprompt_regex);
