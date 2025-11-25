@@ -305,7 +305,9 @@ read_io_buf(struct client_closure *closure)
 
     nread = (size_t)iolog_read(&closure->iolog_files[timing->event],
 	closure->buf, timing->u.nbytes, &errstr);
-    if (nread == (size_t)-1) {
+    if (nread != timing->u.nbytes) {
+	if (nread != (size_t)-1)
+	    errstr = strerror(EINVAL);
 	sudo_warnx(U_("unable to read %s/%s: %s"), iolog_dir,
 	    iolog_fd_to_name(timing->event), errstr);
 	debug_return_bool(false);
@@ -1734,7 +1736,6 @@ main(int argc, char *argv[])
     bool accept_only = false;
     char *reject_reason = NULL;
     const char *iolog_id = NULL;
-    const char *open_mode = "r";
     const char *errstr;
     int ch, sock, iolog_dir_fd, finished;
     debug_decl_vars(main, SUDO_DEBUG_MAIN);
@@ -1782,7 +1783,6 @@ main(int argc, char *argv[])
 	case 'r':
 	    if (!parse_timespec(&restart, optarg))
 		goto bad;
-	    open_mode = "r+";
 	    break;
 	case 's':
 	    if (!parse_timespec(&stop_after, optarg))
@@ -1879,7 +1879,7 @@ main(int argc, char *argv[])
             goto bad;
 
         /* Open the I/O log files and seek to restart point if there is one. */
-        if (!iolog_open_all(iolog_dir_fd, iolog_dir, closure->iolog_files, open_mode))
+        if (!iolog_open_all(iolog_dir_fd, iolog_dir, closure->iolog_files, "r"))
             goto bad;
         if (sudo_timespecisset(&closure->restart)) {
             if (!iolog_seekto(iolog_dir_fd, iolog_dir, closure->iolog_files,

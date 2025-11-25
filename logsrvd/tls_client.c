@@ -64,7 +64,7 @@ verify_peer_identity(int preverify_ok, X509_STORE_CTX *ctx)
 
     current_cert = X509_STORE_CTX_get_current_cert(ctx);
 
-    /* if pre-verification of the cert failed, just propagate that result back */
+    /* If pre-verification of the cert failed, just propagate that result back */
     if (preverify_ok != 1) {
         int err = X509_STORE_CTX_get_error(ctx);
         char current_cert_name[256] = "";
@@ -79,7 +79,7 @@ verify_peer_identity(int preverify_ok, X509_STORE_CTX *ctx)
 
     /*
      * Since this callback is called for each cert in the chain,
-     * check that current cert is the peer's certificate
+     * check that current cert is the peer's certificate.
      */
     peer_cert = X509_STORE_CTX_get0_cert(ctx);
     if (current_cert != peer_cert) {
@@ -88,7 +88,13 @@ verify_peer_identity(int preverify_ok, X509_STORE_CTX *ctx)
 
     /* Fetch the attached peer_info from the ssl connection object. */
     ssl = X509_STORE_CTX_get_ex_data(ctx, SSL_get_ex_data_X509_STORE_CTX_idx());
+    if (ssl == NULL) {
+        debug_return_int(0);
+    }
     peer_info = SSL_get_ex_data(ssl, 1);
+    if (peer_info == NULL) {
+        debug_return_int(0);
+    }
 
     /* Validate the cert based on the host name and IP address. */
     result = validate_hostname(peer_cert, peer_info->name, peer_info->ipaddr);
@@ -101,7 +107,7 @@ tls_connect_cb(int sock, int what, void *v)
 {
     struct tls_client_closure *tls_client = v;
     struct sudo_event_base *evbase = tls_client->evbase;
-    const struct timespec *timeout = &tls_client->connect_timeout;
+    const struct timespec *timeout = NULL;
     const char *errstr;
     int con_stat;
     debug_decl(tls_connect_cb, SUDO_DEBUG_UTIL);
@@ -110,6 +116,9 @@ tls_connect_cb(int sock, int what, void *v)
         sudo_warnx("%s", U_("TLS handshake timeout occurred"));
         goto bad;
     }
+
+    if (sudo_timespecisset(&tls_client->connect_timeout))
+	timeout = &tls_client->connect_timeout;
 
     con_stat = SSL_connect(tls_client->ssl);
 

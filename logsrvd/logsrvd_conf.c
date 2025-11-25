@@ -1,7 +1,7 @@
 /*
  * SPDX-License-Identifier: ISC
  *
- * Copyright (c) 2019-2023 Todd C. Miller <Todd.Miller@sudo.ws>
+ * Copyright (c) 2019-2025 Todd C. Miller <Todd.Miller@sudo.ws>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -334,9 +334,7 @@ logsrvd_conf_relay_retry_interval(void)
 SSL_CTX *
 logsrvd_relay_tls_ctx(void)
 {
-    if (logsrvd_config->relay.ssl_ctx != NULL)
-	return logsrvd_config->relay.ssl_ctx;
-    return logsrvd_config->server.ssl_ctx;
+    return logsrvd_config->relay.ssl_ctx;
 }
 
 bool
@@ -1686,7 +1684,7 @@ logsrvd_conf_alloc(void)
     config->iolog.uid = ROOT_UID;
     config->iolog.gid = ROOT_GID;
     config->iolog.gid_set = false;
-    config->iolog.log_passwords = true;
+    config->iolog.log_passwords = false;
 
     /* Event log defaults */
     config->eventlog.log_type = EVLOG_SYSLOG;
@@ -1740,13 +1738,10 @@ logsrvd_conf_apply(struct logsrvd_config *config)
     }
 
     /* There can be multiple addresses so we can't set a default earlier. */
-    if (TAILQ_EMPTY(&config->server.addresses.addrs)) {
-	/* Enable plaintext listender. */
-	if (!cb_server_listen_address(config, "*:" DEFAULT_PORT, 0))
-	    debug_return_bool(false);
 #if defined(HAVE_OPENSSL)
-	/* If a certificate was specified, enable the TLS listener too. */
-	if (config->server.tls_cert_path != NULL) {
+    if (TAILQ_EMPTY(&config->server.addresses.addrs)) {
+	/* If no listener but TLS has been configured, enable TLS listener. */
+	if (TLS_CONFIGURED(config->server)) {
 	    if (!cb_server_listen_address(config, "*:" DEFAULT_PORT_TLS "(tls)", 0))
 		debug_return_bool(false);
 	}
@@ -1770,7 +1765,12 @@ logsrvd_conf_apply(struct logsrvd_config *config)
 	    }
 	    break;
 	}
+    }
 #endif /* HAVE_OPENSSL */
+    if (TAILQ_EMPTY(&config->server.addresses.addrs)) {
+	/* TLS not configured, enable plaintext listener. */
+	if (!cb_server_listen_address(config, "*:" DEFAULT_PORT, 0))
+	    debug_return_bool(false);
     }
 
 #if defined(HAVE_OPENSSL)
@@ -1790,25 +1790,34 @@ logsrvd_conf_apply(struct logsrvd_config *config)
 	break;
     }
 
-    if (TLS_CONFIGURED(config->relay)) {
-	TAILQ_FOREACH(addr, &config->relay.relays.addrs, entries) {
-	    if (!addr->tls)
-		continue;
-	    /* Create a TLS context for the relay. */
-	    config->relay.ssl_ctx = init_tls_context(
-		TLS_RELAY_STR(config, tls_cacert_path),
-		TLS_RELAY_STR(config, tls_cert_path),
-		TLS_RELAY_STR(config, tls_key_path),
-		TLS_RELAY_STR(config, tls_dhparams_path),
-		TLS_RELAY_STR(config, tls_ciphers_v12),
-		TLS_RELAY_STR(config, tls_ciphers_v13),
-		TLS_RELAY_INT(config, tls_verify));
-	    if (config->relay.ssl_ctx == NULL) {
-		sudo_warnx("%s", U_("unable to initialize relay TLS context"));
-		debug_return_bool(false);
+    TAILQ_FOREACH(addr, &config->relay.relays.addrs, entries) {
+	if (!addr->tls)
+	    continue;
+
+	/* Relay requires TLS so it must be configured (in relay or server). */
+	if (!TLS_CONFIGURED(config->relay)) {
+	    if (config->server.ssl_ctx != NULL) {
+		/* We will use the server TLS settings. */
+		break;
 	    }
-	    break;
+	    sudo_warnx("%s", U_("relay uses TLS but TLS not configured"));
+	    debug_return_bool(false);
 	}
+
+	/* Create a TLS context for the relay. */
+	config->relay.ssl_ctx = init_tls_context(
+	    TLS_RELAY_STR(config, tls_cacert_path),
+	    TLS_RELAY_STR(config, tls_cert_path),
+	    TLS_RELAY_STR(config, tls_key_path),
+	    TLS_RELAY_STR(config, tls_dhparams_path),
+	    TLS_RELAY_STR(config, tls_ciphers_v12),
+	    TLS_RELAY_STR(config, tls_ciphers_v13),
+	    TLS_RELAY_INT(config, tls_verify));
+	if (config->relay.ssl_ctx == NULL) {
+	    sudo_warnx("%s", U_("unable to initialize relay TLS context"));
+	    debug_return_bool(false);
+	}
+	break;
     }
 #endif /* HAVE_OPENSSL */
 
@@ -1816,7 +1825,28 @@ logsrvd_conf_apply(struct logsrvd_config *config)
     if (TAILQ_EMPTY(&config->relay.relays.addrs))
 	config->relay.store_first = false;
 
-    /* Open server log if specified. */
+    /* Open event log if specified. */
+    switch (config->eventlog.log_type) {
+    case EVLOG_SYSLOG:
+	openlog("sudo", 0, config->syslog.facility);
+	break;
+    case EVLOG_FILE:
+	config->logfile.stream = logsrvd_open_eventlog(config);
+	if (config->logfile.stream == NULL)
+	    debug_return_bool(false);
+	break;
+    case EVLOG_NONE:
+	break;
+    default:
+	sudo_debug_printf(SUDO_DEBUG_ERROR|SUDO_DEBUG_LINENO,
+	    "cannot open unknown log type %d", config->eventlog.log_type);
+	break;
+    }
+
+    /*
+     * Open server log if specified.
+     * We do this last due to the sudo_warn_set_conversation() call.
+     */
     switch (config->server.log_type) {
     case SERVER_LOG_SYSLOG:
 	sudo_warn_set_conversation(logsrvd_conv_syslog);
@@ -1834,24 +1864,6 @@ logsrvd_conf_apply(struct logsrvd_config *config)
     case SERVER_LOG_STDERR:
 	/* Default is stderr. */
 	sudo_warn_set_conversation(NULL);
-	break;
-    default:
-	sudo_debug_printf(SUDO_DEBUG_ERROR|SUDO_DEBUG_LINENO,
-	    "cannot open unknown log type %d", config->eventlog.log_type);
-	break;
-    }
-
-    /* Open event log if specified. */
-    switch (config->eventlog.log_type) {
-    case EVLOG_SYSLOG:
-	openlog("sudo", 0, config->syslog.facility);
-	break;
-    case EVLOG_FILE:
-	config->logfile.stream = logsrvd_open_eventlog(config);
-	if (config->logfile.stream == NULL)
-	    debug_return_bool(false);
-	break;
-    case EVLOG_NONE:
 	break;
     default:
 	sudo_debug_printf(SUDO_DEBUG_ERROR|SUDO_DEBUG_LINENO,

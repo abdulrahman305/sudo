@@ -486,7 +486,7 @@ fill_user(char * restrict str, size_t strsize, void * restrict v)
 	sudo_warnx(U_("%s: %s is not set"), __func__, "submituser");
 	debug_return_size_t(strsize);
     }
-    debug_return_size_t(strlcpy(str, evlog->submituser, strsize));
+    debug_return_size_t(strlcpy_no_slash(str, evlog->submituser, strsize));
 }
 
 static size_t
@@ -500,7 +500,7 @@ fill_group(char * restrict str, size_t strsize, void * restrict v)
 	sudo_warnx(U_("%s: %s is not set"), __func__, "submitgroup");
 	debug_return_size_t(strsize);
     }
-    debug_return_size_t(strlcpy(str, evlog->submitgroup, strsize));
+    debug_return_size_t(strlcpy_no_slash(str, evlog->submitgroup, strsize));
 }
 
 static size_t
@@ -514,7 +514,7 @@ fill_runas_user(char * restrict str, size_t strsize, void * restrict v)
 	sudo_warnx(U_("%s: %s is not set"), __func__, "runuser");
 	debug_return_size_t(strsize);
     }
-    debug_return_size_t(strlcpy(str, evlog->runuser, strsize));
+    debug_return_size_t(strlcpy_no_slash(str, evlog->runuser, strsize));
 }
 
 static size_t
@@ -529,7 +529,7 @@ fill_runas_group(char * restrict str, size_t strsize, void * restrict v)
 	sudo_warnx(U_("%s: %s is not set"), __func__, "rungroup");
 	debug_return_size_t(strsize);
     }
-    debug_return_size_t(strlcpy(str, evlog->rungroup, strsize));
+    debug_return_size_t(strlcpy_no_slash(str, evlog->rungroup, strsize));
 }
 
 static size_t
@@ -543,7 +543,7 @@ fill_hostname(char * restrict str, size_t strsize, void * restrict v)
 	sudo_warnx(U_("%s: %s is not set"), __func__, "submithost");
 	debug_return_size_t(strsize);
     }
-    debug_return_size_t(strlcpy(str, evlog->submithost, strsize));
+    debug_return_size_t(strlcpy_no_slash(str, evlog->submithost, strsize));
 }
 
 static size_t
@@ -551,13 +551,15 @@ fill_command(char * restrict str, size_t strsize, void * restrict v)
 {
     struct iolog_path_closure *closure = v;
     const struct eventlog *evlog = closure->evlog;
+    const char *cmnd_base;
     debug_decl(fill_command, SUDO_DEBUG_UTIL);
 
     if (evlog->command == NULL) {
 	sudo_warnx(U_("%s: %s is not set"), __func__, "command");
 	debug_return_size_t(strsize);
     }
-    debug_return_size_t(strlcpy(str, evlog->command, strsize));
+    cmnd_base = sudo_basename(evlog->command);
+    debug_return_size_t(strlcpy_no_slash(str, cmnd_base, strsize));
 }
 
 /* Note: "seq" must be first in the list. */
@@ -594,10 +596,20 @@ create_iolog_path(struct connection_closure *closure)
 	    logsrvd_conf_iolog_dir());
 	goto bad;
     }
+    if (contains_dot_dot(expanded_dir)) {
+	sudo_warnx(U_("unable to expand iolog path %s: path traversal attack"),
+	    logsrvd_conf_iolog_dir());
+	goto bad;
+    }
 
     if (!expand_iolog_path(logsrvd_conf_iolog_file(), expanded_file,
 	    sizeof(expanded_file), &path_escapes[0], &path_closure)) {
 	sudo_warnx(U_("unable to expand iolog path %s"),
+	    logsrvd_conf_iolog_file());
+	goto bad;
+    }
+    if (contains_dot_dot(expanded_file)) {
+	sudo_warnx(U_("unable to expand iolog path %s: path traversal attack"),
 	    logsrvd_conf_iolog_file());
 	goto bad;
     }
@@ -726,6 +738,7 @@ iolog_store_uuid(int dfd, struct connection_closure *closure)
 	    "uuid");
         goto bad;
     }
+    close(fd);
 
     debug_return_bool(true);
 bad:

@@ -64,7 +64,7 @@ static struct sudoers_io_operations {
 
 static struct log_details iolog_details;
 static bool warned = false;
-static bool log_passwords = true;
+static bool log_passwords = false;
 static int iolog_dir_fd = -1;
 static struct timespec last_time;
 static void *passprompt_regex_handle;
@@ -190,16 +190,17 @@ free_iolog_details(void)
 {
     debug_decl(free_iolog_details, SUDOERS_DEBUG_PLUGIN);
 
-    if (iolog_details.evlog != NULL) {
-	/* We only make a shallow copy of argv and envp. */
-	free(iolog_details.evlog->runargv);
-	iolog_details.evlog->runargv = NULL;
-	free(iolog_details.evlog->runenv);
-	iolog_details.evlog->runenv = NULL;
-	free(iolog_details.evlog->submitenv);
-	iolog_details.evlog->submitenv = NULL;
-	eventlog_free(iolog_details.evlog);
-    }
+    /*
+     * We only make a shallow copy of argv and envp.
+     */
+    free(iolog_details.evlog.runargv);
+    iolog_details.evlog.runargv = NULL;
+    free(iolog_details.evlog.runenv);
+    iolog_details.evlog.runenv = NULL;
+    free(iolog_details.evlog.submitenv);
+    iolog_details.evlog.submitenv = NULL;
+    eventlog_free_contents(&iolog_details.evlog);
+
     str_list_free(iolog_details.log_servers);
 #if defined(HAVE_OPENSSL)
     free(iolog_details.ca_bundle);
@@ -290,7 +291,7 @@ iolog_deserialize_info(struct log_details *details, char * const user_info[],
     char * const command_info[], char * const argv[], char * const user_env[])
 {
     const struct sudoers_context *ctx = sudoers_get_context();
-    struct eventlog *evlog;
+    struct eventlog *evlog = &details->evlog;
     const char *runas_uid_str = "0", *runas_euid_str = NULL;
     const char *runas_gid_str = "0", *runas_egid_str = NULL;
     const char *errstr;
@@ -300,10 +301,6 @@ iolog_deserialize_info(struct log_details *details, char * const user_info[],
     struct group *gr;
     id_t id;
     debug_decl(iolog_deserialize_info, SUDOERS_DEBUG_UTIL);
-
-    if ((evlog = calloc(1, sizeof(*evlog))) == NULL)
-	goto oom;
-    details->evlog = evlog;
 
     evlog->lines = 24;
     evlog->columns = 80;
@@ -683,8 +680,8 @@ static int
 sudoers_io_open_local(struct timespec *start_time)
 {
     const struct sudoers_context *ctx = sudoers_get_context();
-    struct eventlog *evlog = iolog_details.evlog;
-    int i, ret = -1;
+    struct eventlog *evlog = &iolog_details.evlog;
+    int i;
     debug_decl(sudoers_io_open_local, SUDOERS_DEBUG_PLUGIN);
 
     /* If no I/O log path defined we need to figure it out ourselves. */
@@ -696,7 +693,7 @@ sudoers_io_open_local(struct timespec *start_time)
 	    log_warning(ctx, SLOG_SEND_MAIL,
 		N_("unable to update sequence file"));
 	    warned = true;
-	    goto done;
+	    goto bad;
 	}
 	len = asprintf(&evlog->iolog_path, "%s/%c%c/%c%c/%c%c",
 	    _PATH_SUDO_IO_LOGDIR,
@@ -704,7 +701,7 @@ sudoers_io_open_local(struct timespec *start_time)
 	    evlog->sessid[3], evlog->sessid[4], evlog->sessid[5]);
 	if (len == -1) {
 	    sudo_warnx(U_("%s: %s"), __func__, U_("unable to allocate memory"));
-	    goto done;
+	    goto bad;
 	}
     }
 
@@ -715,7 +712,7 @@ sudoers_io_open_local(struct timespec *start_time)
     if (!iolog_mkpath(evlog->iolog_path)) {
 	log_warning(ctx, SLOG_SEND_MAIL, "%s", evlog->iolog_path);
 	warned = true;
-	goto done;
+	goto bad;
     }
 
     iolog_dir_fd =
@@ -723,15 +720,15 @@ sudoers_io_open_local(struct timespec *start_time)
     if (iolog_dir_fd == -1) {
 	log_warning(ctx, SLOG_SEND_MAIL, "%s", evlog->iolog_path);
 	warned = true;
-	goto done;
+	goto bad;
     }
 
     /* Write log file with user and command details. */
-    if (!iolog_write_info_file(iolog_dir_fd, iolog_details.evlog)) {
+    if (!iolog_write_info_file(iolog_dir_fd, &iolog_details.evlog)) {
 	log_warningx(ctx, SLOG_SEND_MAIL,
 	    N_("unable to write to I/O log file: %s"), strerror(errno));
 	warned = true;
-	goto done;
+	goto bad;
     }
 
     /* Create the timing and I/O log files. */
@@ -740,14 +737,24 @@ sudoers_io_open_local(struct timespec *start_time)
 	    log_warning(ctx, SLOG_SEND_MAIL, N_("unable to create %s/%s"),
 		evlog->iolog_path, iolog_fd_to_name(i));
 	    warned = true;
-	    goto done;
+	    goto bad;
 	}
     }
 
-    ret = true;
+    debug_return_int(true);
 
-done:
-    debug_return_int(ret);
+bad:
+    if (iolog_dir_fd != -1) {
+	for (i = 0; i < IOFD_MAX; i++) {
+	    if (iolog_files[i].fd.v == NULL)
+		continue;
+	    iolog_close(&iolog_files[i], NULL);
+	    iolog_files[i].fd.v = NULL;
+	}
+	close(iolog_dir_fd);
+	iolog_dir_fd = -1;
+    }
+    debug_return_int(-1);
 }
 
 #ifdef SUDOERS_LOG_CLIENT

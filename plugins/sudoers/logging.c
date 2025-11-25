@@ -106,7 +106,7 @@ init_log_details(struct log_details *details, struct eventlog *evlog)
 	debug_return_bool(false);
     }
 
-    details->evlog = evlog;
+    details->evlog = *evlog;
     details->ignore_log_errors = def_ignore_logfile_errors;
     details->log_servers = log_servers;
     details->server_timeout.tv_sec = def_log_server_timeout;
@@ -137,7 +137,7 @@ log_server_reject(const struct sudoers_context *ctx, struct eventlog *evlog,
 	    debug_return_bool(true);
 
 	/* Use existing client closure. */
-        if (fmt_reject_message(client_closure, evlog)) {
+        if (fmt_reject_message(client_closure, evlog, message)) {
             if (client_closure->write_ev->add(client_closure->write_ev,
                     &client_closure->log_details->server_timeout) == -1) {
                 sudo_warn("%s", U_("unable to add event to queue"));
@@ -195,7 +195,7 @@ log_server_alert(const struct sudoers_context *ctx, struct eventlog *evlog,
 	}
 
 	/* Use existing client closure. */
-        if (fmt_alert_message(client_closure, evlog)) {
+        if (fmt_alert_message(client_closure, evlog, emessage ? emessage : message)) {
             if (client_closure->write_ev->add(client_closure->write_ev,
                     &client_closure->log_details->server_timeout) == -1) {
                 sudo_warn("%s", U_("unable to add event to queue"));
@@ -1152,7 +1152,7 @@ init_eventlog_config(void)
     eventlog_set_syslog_alertpri(def_syslog_badpri);
     eventlog_set_syslog_maxlen(def_syslog_maxlen);
     eventlog_set_file_maxlen(def_loglinelen);
-    eventlog_set_mailuid(ROOT_UID);
+    eventlog_set_mailuser(ROOT_UID, ROOT_GID);
     eventlog_set_omit_hostname(!def_log_host);
     eventlog_set_logpath(def_logfile);
     eventlog_set_time_fmt(def_log_year ? "%h %e %T %Y" : "%h %e %T");

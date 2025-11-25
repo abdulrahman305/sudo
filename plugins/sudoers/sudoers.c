@@ -175,17 +175,25 @@ sudoers_reinit_defaults(struct sudoers_context *ctx)
     debug_return_bool(true);
 }
 
+static bool sudoers_initialized;
+
+/*
+ * Initialize sudoers data structures and parse sudoers sources.
+ * Returns 1 on success and -1 on error.
+ */
 int
 sudoers_init(void *info, sudoers_logger_t logger, char * const envp[])
 {
     struct sudo_nss *nss, *nss_next;
     int oldlocale, sources = 0;
-    static int ret = -1;
+    static int ret;
     debug_decl(sudoers_init, SUDOERS_DEBUG_PLUGIN);
 
-    /* Only initialize once. */
-    if (snl != NULL)
+    /* Only attempt to initialize once. */
+    if (sudoers_initialized)
 	debug_return_int(ret);
+    sudoers_initialized = true;
+    ret = -1;
 
     bindtextdomain("sudoers", LOCALEDIR);
 
@@ -1516,6 +1524,7 @@ sudoers_cleanup(void)
 	free(def->val);
 	free(def);
     }
+    sudoers_initialized = false;
     need_reinit = false;
     if (def_group_plugin)
 	group_plugin_unload();

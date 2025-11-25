@@ -46,8 +46,8 @@
 /* Shutdown timeout (in seconds) in case client connections time out. */
 #define SHUTDOWN_TIMEO	10
 
-/* Template for mkstemp(3) when creating temporary files. */
-#define RELAY_TEMPLATE	"relay.XXXXXXXX"
+#define valid_timespec(ts) ((ts) != NULL && \
+    (ts)->tv_sec >= 0 && (ts)->tv_nsec >= 0 && (ts)->tv_nsec < 1000000000)
 
 /*
  * Connection status.
@@ -173,19 +173,11 @@ TAILQ_HEAD(server_address_list, server_address);
 struct listener {
     TAILQ_ENTRY(listener) entries;
     struct sudo_event *ev;
+    char *sa_str;
     int sock;
     bool tls;
 };
 TAILQ_HEAD(listener_list, listener);
-
-/*
- * Queue of finished journal files to be relayed.
- */
-struct outgoing_journal {
-    TAILQ_ENTRY(outgoing_journal) entries;
-    char *journal_path;
-};
-TAILQ_HEAD(outgoing_journal_queue, outgoing_journal);
 
 /* iolog_writer.c */
 struct eventlog *evlog_new(const TimeSpec *submit_time, InfoMessage * const *info_msgs, size_t infolen, struct connection_closure *closure);
@@ -245,7 +237,6 @@ extern struct client_message_switch cms_journal;
 
 /* logsrvd_local.c */
 extern struct client_message_switch cms_local;
-bool set_random_drop(const char *dropstr);
 bool store_accept_local(const AcceptMessage *msg, const uint8_t *buf, size_t len, struct connection_closure *closure);
 bool store_reject_local(const RejectMessage *msg, const uint8_t *buf, size_t len, struct connection_closure *closure);
 bool store_exit_local(const ExitMessage *msg, const uint8_t *buf, size_t len, struct connection_closure *closure);

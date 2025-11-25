@@ -60,12 +60,12 @@ jobs:
   build_macos:
     description: Configure, build and package sudo (macOS)
     macos:
-      xcode: 14.2.0 # indicate our selected version of Xcode
+      xcode: 26.1.0 # indicate our selected version of Xcode
     steps:
       - checkout
       - run:
           name: "Building and packaging sudo (macOS)"
-          command: ./scripts/mkpkg --enable-warnings
+          command: ARCH_FLAGS= ./scripts/mkpkg --enable-warnings
       # Save workspace for subsequent jobs (i.e. test)
       - persist_to_workspace:
           root: .
@@ -74,7 +74,7 @@ jobs:
   test_macos:
     description: run sudo tests in a pre-built workspace (macOS)
     macos:
-      xcode: 14.2.0 # indicate our selected version of Xcode
+      xcode: 26.1.0 # indicate our selected version of Xcode
     steps:
       # Reuse the workspace from the build job
       - attach_workspace:

@@ -146,7 +146,7 @@ verify_peer_identity(int preverify_ok, X509_STORE_CTX *ctx)
 
     current_cert = X509_STORE_CTX_get_current_cert(ctx);
 
-    /* if pre-verification of the cert failed, just propagate that result back */
+    /* If pre-verification of the cert failed, just propagate that result back */
     if (preverify_ok != 1) {
         int err = X509_STORE_CTX_get_error(ctx);
         char current_cert_name[256] = "";
@@ -159,29 +159,29 @@ verify_peer_identity(int preverify_ok, X509_STORE_CTX *ctx)
         debug_return_int(0);
     }
 
-    /* since this callback is called for each cert in the chain,
-     * check that current cert is the peer's certificate
+    /*
+     * Since this callback is called for each cert in the chain,
+     * check that current cert is the peer's certificate.
      */
     peer_cert = X509_STORE_CTX_get0_cert(ctx);
-
     if (current_cert != peer_cert) {
         debug_return_int(1);
     }
 
-    /* read out the attached object (closure) from the ssl connection object */
+    /* Fetch the attached closure from the ssl connection object. */
     ssl = X509_STORE_CTX_get_ex_data(ctx, SSL_get_ex_data_X509_STORE_CTX_idx());
+    if (ssl == NULL) {
+        debug_return_int(0);
+    }
     closure = SSL_get_ex_data(ssl, 1);
+    if (closure == NULL) {
+        debug_return_int(0);
+    }
 
     result = validate_hostname(peer_cert, closure->server_name,
 	closure->server_ip);
 
-    switch(result)
-    {
-        case MatchFound:
-            debug_return_int(1);
-        default:
-            debug_return_int(0);
-    }
+    debug_return_int(result == MatchFound);
 }
 
 static bool
@@ -1048,7 +1048,7 @@ done:
  * Returns true on success, false on failure.
  */
 bool
-fmt_reject_message(struct client_closure *closure, const struct eventlog *evlog)
+fmt_reject_message(struct client_closure *closure, const struct eventlog *evlog,    const char *reason)
 {
     ClientMessage client_msg = CLIENT_MESSAGE__INIT;
     RejectMessage reject_msg = REJECT_MESSAGE__INIT;
@@ -1072,7 +1072,7 @@ fmt_reject_message(struct client_closure *closure, const struct eventlog *evlog)
     reject_msg.submit_time = &ts;
 
     /* Reason for rejecting the request. */
-    reject_msg.reason = (char *)closure->reason;
+    reject_msg.reason = (char *)reason;
 
     reject_msg.info_msgs = fmt_info_messages(closure, evlog,
 	&reject_msg.n_info_msgs);
@@ -1100,7 +1100,8 @@ done:
  * Returns true on success, false on failure.
  */
 bool
-fmt_alert_message(struct client_closure *closure, const struct eventlog *evlog)
+fmt_alert_message(struct client_closure *closure, const struct eventlog *evlog,
+    const char *reason)
 {
     ClientMessage client_msg = CLIENT_MESSAGE__INIT;
     AlertMessage alert_msg = ALERT_MESSAGE__INIT;
@@ -1125,7 +1126,7 @@ fmt_alert_message(struct client_closure *closure, const struct eventlog *evlog)
     alert_msg.alert_time = &ts;
 
     /* Reason for the alert. */
-    alert_msg.reason = (char *)closure->reason;
+    alert_msg.reason = (char *)reason;
 
     alert_msg.info_msgs = fmt_info_messages(closure, evlog,
 	&alert_msg.n_info_msgs);
@@ -1163,7 +1164,7 @@ fmt_initial_message(struct client_closure *closure)
     switch (closure->state) {
     case SEND_ACCEPT:
 	/* Format and schedule AcceptMessage. */
-	if ((ret = fmt_accept_message(closure, closure->log_details->evlog))) {
+	if ((ret = fmt_accept_message(closure, &closure->log_details->evlog))) {
 	    /*
 	     * Move read/write events back to main sudo event loop.
 	     * Server messages may occur at any time, so no timeout.
@@ -1179,11 +1180,13 @@ fmt_initial_message(struct client_closure *closure)
 	break;
     case SEND_REJECT:
 	/* Format and schedule RejectMessage. */
-	ret = fmt_reject_message(closure, closure->log_details->evlog);
+	ret = fmt_reject_message(closure, &closure->log_details->evlog,
+	    closure->reason);
 	break;
     case SEND_ALERT:
 	/* Format and schedule AlertMessage. */
-	ret = fmt_alert_message(closure, closure->log_details->evlog);
+	ret = fmt_alert_message(closure, &closure->log_details->evlog,
+	    closure->reason);
 	break;
     default:
 	sudo_warnx(U_("%s: unexpected state %d"), __func__, closure->state);

@@ -268,6 +268,7 @@ static bool
 connect_relay_tls(struct connection_closure *closure)
 {
     struct tls_client_closure *tls_client = &closure->relay_closure->tls_client;
+    const struct timespec *timeout = logsrvd_conf_relay_connect_timeout();
     SSL_CTX *ssl_ctx = logsrvd_relay_tls_ctx();
     debug_decl(connect_relay_tls, SUDO_DEBUG_UTIL);
 
@@ -279,7 +280,11 @@ connect_relay_tls(struct connection_closure *closure)
     if (tls_client->tls_connect_ev == NULL)
         goto bad;
     tls_client->peer_name = &closure->relay_closure->relay_name;
-    tls_client->connect_timeout = *logsrvd_conf_relay_connect_timeout();
+    if (timeout != NULL) {
+	tls_client->connect_timeout = *timeout;
+    } else {
+	sudo_timespecclear(&tls_client->connect_timeout);
+    }
     tls_client->start_fn = tls_client_start_fn;
     if (!tls_ctx_client_setup(ssl_ctx, closure->relay_closure->sock, tls_client))
         goto bad;
@@ -586,7 +591,7 @@ handle_log_id(const char *id, struct connection_closure *closure)
     /*
      * We currently pass log_id to the client without modifying it.
      * TODO: append relay host to the log_id so we can restart the
-     *       session with the proper relay if more than one is conifgured.
+     *       session with the proper relay if more than one is configured.
      */
     msg.u.log_id = (char *)id;
     msg.type_case = SERVER_MESSAGE__TYPE_LOG_ID;
@@ -1034,8 +1039,13 @@ relay_client_msg_cb(int fd, int what, void *v)
 	buf->len = 0;
 	TAILQ_REMOVE(&relay_closure->write_bufs, buf, entries);
 	TAILQ_INSERT_TAIL(&closure->free_bufs, buf, entries);
-	if (TAILQ_EMPTY(&relay_closure->write_bufs))
+	if (TAILQ_EMPTY(&relay_closure->write_bufs)) {
+	    /* Write queue empty, check state. */
 	    sudo_ev_del(closure->evbase, relay_closure->write_ev);
+	    if (closure->error || closure->state == FINISHED ||
+		    closure->state == SHUTDOWN)
+		goto close_connection;
+	}
     }
     debug_return;
 

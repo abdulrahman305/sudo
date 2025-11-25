@@ -276,11 +276,12 @@ closefrom_nodebug(int lowfd)
 #define MAX_MAILFLAGS	63
 
 sudo_noreturn static void
-exec_mailer(int pipein)
+exec_mailer(int pipein) // -V1082
 {
     const struct eventlog_config *evl_conf = eventlog_getconf();
     char *last, *mflags, *p, *argv[MAX_MAILFLAGS + 1];
     const char *mpath = evl_conf->mailerpath;
+    gid_t mailgid = evl_conf->mailgid;
     size_t i;
     const char * const root_envp[] = {
 	"HOME=/",
@@ -299,15 +300,13 @@ exec_mailer(int pipein)
 	syslog(LOG_ERR, _("unable to dup stdin: %m")); // -V618
 	sudo_debug_printf(SUDO_DEBUG_ERROR,
 	    "unable to dup stdin: %s", strerror(errno));
-	sudo_debug_exit(__func__, __FILE__, __LINE__, sudo_debug_subsys);
-	_exit(127);
+	goto bad;
     }
 
     /* Build up an argv based on the mailer path and flags */
     if ((mflags = strdup(evl_conf->mailerflags)) == NULL) {
-	syslog(LOG_ERR, _("unable to allocate memory")); // -V618
-	sudo_debug_exit(__func__, __FILE__, __LINE__, sudo_debug_subsys);
-	_exit(127);
+	syslog(LOG_ERR, "%s", _("unable to allocate memory"));
+	goto bad;
     }
     argv[0] = sudo_basename(mpath);
 
@@ -326,11 +325,23 @@ exec_mailer(int pipein)
     if (setuid(ROOT_UID) != 0) {
 	sudo_debug_printf(SUDO_DEBUG_ERROR, "unable to change uid to %u",
 	    ROOT_UID);
+	goto bad;
+    }
+    if (setgid(mailgid) != 0) {
+	sudo_debug_printf(SUDO_DEBUG_ERROR, "unable to change gid to %u",
+	    (unsigned int)mailgid);
+	goto bad;
+    }
+    if (setgroups(1, &mailgid) != 0) {
+	sudo_debug_printf(SUDO_DEBUG_ERROR, "unable to set groups to %u",
+	    (unsigned int)mailgid);
+	goto bad;
     }
     if (evl_conf->mailuid != ROOT_UID) {
 	if (setuid(evl_conf->mailuid) != 0) {
 	    sudo_debug_printf(SUDO_DEBUG_ERROR, "unable to change uid to %u",
 		(unsigned int)evl_conf->mailuid);
+	    goto bad;
 	}
     }
     sudo_debug_exit(__func__, __FILE__, __LINE__, sudo_debug_subsys);
@@ -341,6 +352,9 @@ exec_mailer(int pipein)
     syslog(LOG_ERR, _("unable to execute %s: %m"), mpath); // -V618
     sudo_debug_printf(SUDO_DEBUG_ERROR, "unable to execute %s: %s",
 	mpath, strerror(errno));
+    _exit(127);
+bad:
+    sudo_debug_exit(__func__, __FILE__, __LINE__, sudo_debug_subsys);
     _exit(127);
 }
 
